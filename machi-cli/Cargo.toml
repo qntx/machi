@@ -1,0 +1,17 @@
+[package]
+name = "machi-cli"
+version.workspace = true
+edition.workspace = true
+description = "A Web3-native AI Agent Framework with embedded wallet capabilities"
+license.workspace = true
+readme = "../README.md"
+repository.workspace = true
+keywords = ["agent", "ai", "web3", "wallet", "ethereum"]
+categories = ["cryptography", "asynchronous"]
+
+
+
+[dependencies]
+
+[lints]
+workspace = true

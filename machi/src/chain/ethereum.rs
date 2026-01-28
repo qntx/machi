@@ -54,7 +54,9 @@ impl Ethereum {
 
     /// Create an alloy provider.
     fn provider(&self) -> Result<impl Provider + Clone> {
-        let url = self.rpc_url.parse()
+        let url = self
+            .rpc_url
+            .parse()
             .map_err(|e| Error::Chain(format!("invalid RPC URL: {e}")))?;
         let provider = ProviderBuilder::new().connect_http(url);
         Ok(provider)
@@ -103,11 +105,11 @@ impl Chain for Ethereum {
         let signer = self.derive_private_key(wallet, index)?;
         let eth_wallet = EthereumWallet::from(signer);
 
-        let url = self.rpc_url.parse()
+        let url = self
+            .rpc_url
+            .parse()
             .map_err(|e| Error::Chain(format!("invalid RPC URL: {e}")))?;
-        let provider = ProviderBuilder::new()
-            .wallet(eth_wallet)
-            .connect_http(url);
+        let provider = ProviderBuilder::new().wallet(eth_wallet).connect_http(url);
 
         let to_addr = Address::from_str(&tx.to)
             .map_err(|e| Error::Chain(format!("invalid recipient address: {e}")))?;

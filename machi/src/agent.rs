@@ -9,7 +9,9 @@ use crate::backend::{Backend, BackendResponse, ToolResult as BackendToolResult};
 use crate::chain::{Chain, TransactionRequest, TxHash};
 use crate::error::{Error, Result};
 use crate::policy::{AllowAll, Decision, Policy};
-use crate::tools::{ToolContext, ToolDefinition, ToolResult};
+use crate::tools::Tool;
+use crate::tools::wallet::{GetAddress, GetBalance, SendTransaction};
+use crate::tools::{ToolContext, ToolDefinition, ToolOutput, builtin_tool_definitions};
 use crate::wallet::AgentWallet;
 
 /// Maximum number of tool call iterations to prevent infinite loops.
@@ -81,24 +83,26 @@ where
     }
 
     /// Get the list of available wallet tools.
-    pub fn available_tools(&self) -> Vec<ToolDefinition>
-    where
-        C: 'static,
-    {
-        crate::tools::wallet::create_wallet_tools::<C>().definitions()
+    pub fn available_tools(&self) -> Vec<ToolDefinition> {
+        builtin_tool_definitions()
     }
 
     /// Execute a tool by name with the given arguments.
-    pub async fn execute_tool(&self, name: &str, args: Value) -> ToolResult
+    pub async fn execute_tool(&self, name: &str, args: Value) -> ToolOutput
     where
         C: 'static,
     {
-        let registry = crate::tools::wallet::create_wallet_tools::<C>();
         let ctx = ToolContext {
             wallet: &self.wallet,
             chain: &self.chain,
         };
-        registry.execute(&ctx, name, args).await
+
+        match name {
+            "get_address" => GetAddress.call(&ctx, args).await,
+            "get_balance" => GetBalance.call(&ctx, args).await,
+            "send_transaction" => SendTransaction.call(&ctx, args).await,
+            _ => ToolOutput::err(format!("Unknown tool: {name}")),
+        }
     }
 
     /// Run the agent with a user prompt, handling tool calls automatically.
@@ -139,12 +143,9 @@ where
                     // Execute all tool calls
                     let mut results = Vec::new();
                     for call in tool_calls {
-                        let tool_result = self.execute_tool(&call.name, call.arguments.clone()).await;
-                        let content = if tool_result.success {
-                            serde_json::to_string(&tool_result.data).unwrap_or_default()
-                        } else {
-                            format!("Error: {}", tool_result.data)
-                        };
+                        let tool_output =
+                            self.execute_tool(&call.name, call.arguments.clone()).await;
+                        let content = tool_output.to_string();
                         results.push(BackendToolResult::new(&call.id, content));
                     }
 

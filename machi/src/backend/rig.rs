@@ -115,11 +115,15 @@ impl<A> RigBackend<A> {
         // Look for tool call patterns
         if let Some(start) = trimmed.find("{\"tool_call\"") {
             if let Some(end) = trimmed[start..].find('}') {
-                let json_str = &trimmed[start..=start + end + trimmed[start + end + 1..].find('}').unwrap_or(0) + end];
+                let json_str = &trimmed
+                    [start..=start + end + trimmed[start + end + 1..].find('}').unwrap_or(0) + end];
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
                     if let Some(tool_call) = parsed.get("tool_call") {
                         let name = tool_call.get("name")?.as_str()?.to_string();
-                        let arguments = tool_call.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+                        let arguments = tool_call
+                            .get("arguments")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({}));
                         let id = format!("call_{}", uuid_simple());
                         return Some(vec![ToolCall::new(id, name, arguments)]);
                     }
@@ -134,7 +138,10 @@ impl<A> RigBackend<A> {
                 let json_str = &trimmed[start + 15..end];
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
                     let name = parsed.get("name")?.as_str()?.to_string();
-                    let arguments = parsed.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+                    let arguments = parsed
+                        .get("arguments")
+                        .cloned()
+                        .unwrap_or(serde_json::json!({}));
                     let id = format!("call_{}", uuid_simple());
                     return Some(vec![ToolCall::new(id, name, arguments)]);
                 }
@@ -174,14 +181,19 @@ where
         let tools_desc = tools
             .iter()
             .map(|t| {
-                let params: Vec<String> = t.parameters
+                let params: Vec<String> = t
+                    .parameters
                     .iter()
                     .map(|p| format!("  - {}: {} ({})", p.name, p.r#type, p.description))
                     .collect();
                 format!(
                     "- {}({}): {}\n  Parameters:\n{}",
                     t.name,
-                    t.parameters.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", "),
+                    t.parameters
+                        .iter()
+                        .map(|p| p.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     t.description,
                     params.join("\n")
                 )

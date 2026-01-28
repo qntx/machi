@@ -1,11 +1,11 @@
 [package]
 name = "machi"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "A Web3-native AI Agent Framework with embedded wallet capabilities"
-license = "MIT OR Apache-2.0"
+license.workspace = true
 readme = "../README.md"
-repository = "https://github.com/pyroth/machi"
+repository.workspace = true
 keywords = ["agent", "ai", "web3", "wallet", "ethereum"]
 categories = ["cryptography", "asynchronous"]
 

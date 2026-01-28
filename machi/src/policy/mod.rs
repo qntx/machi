@@ -80,10 +80,7 @@ impl Policy for SpendingLimit {
         }
 
         if !self.whitelist.is_empty() && !self.whitelist.contains(&tx.to) {
-            return Decision::RequireApproval(format!(
-                "Recipient {} is not in whitelist",
-                tx.to
-            ));
+            return Decision::RequireApproval(format!("Recipient {} is not in whitelist", tx.to));
         }
 
         Decision::Allow

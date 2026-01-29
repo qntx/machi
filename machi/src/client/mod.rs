@@ -41,6 +41,8 @@ use crate::{
     prelude::TranscriptionClient,
 };
 
+use crate::completion::{GetTokenUsage, Usage};
+
 /// Abstracts over the ability to instantiate a client, either via environment variables or some
 /// `Self::Input`
 pub trait ProviderClient {
@@ -53,7 +55,13 @@ pub trait ProviderClient {
     fn from_val(input: Self::Input) -> Self;
 }
 
-use crate::completion::{GetTokenUsage, Usage};
+/// A trait for API keys. This determines whether the key is inserted into a [Client]'s default
+/// headers (in the `Some` case) or handled by a given provider extension (in the `None` case)
+pub trait ApiKey: Sized {
+    fn into_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
+        None
+    }
+}
 
 /// The final streaming response from a dynamic client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,14 +72,6 @@ pub struct FinalCompletionResponse {
 impl GetTokenUsage for FinalCompletionResponse {
     fn token_usage(&self) -> Option<Usage> {
         self.usage
-    }
-}
-
-/// A trait for API keys. This determines whether the key is inserted into a [Client]'s default
-/// headers (in the `Some` case) or handled by a given provider extension (in the `None` case)
-pub trait ApiKey: Sized {
-    fn into_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
-        None
     }
 }
 

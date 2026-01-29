@@ -1,50 +1,58 @@
-//! Machi - A Web3-native AI Agent Framework
+﻿#![cfg_attr(docsrs, feature(doc_cfg))]
+#![allow(tail_expr_drop_order)]
+//! Machi is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 //!
-//! Machi provides a framework for building AI agents with embedded
-//! cryptocurrency wallet capabilities. Each agent is created with its own
-//! HD wallet identity, enabling autonomous blockchain interactions.
-//!
-//! # Features
-//!
-//! - **Native Wallet Identity**: Every agent has a built-in HD wallet
-//! - **Multi-chain Support**: Ethereum, Solana, Bitcoin (via kobe)
-//! - **Flexible Backends**: Support for rig, OpenAI, and more
-//! - **Policy Control**: Fine-grained control over agent actions
-//!
-//! # Feature Flags
-//!
-//! - `rig` - Enable rig backend support
-//! - `ethereum` - Enable Ethereum chain support
-//!
-//! # Example
-//!
-//! ```ignore
-//! use machi::{Agent, AgentBuilder};
-//! use machi::backend::rig::RigBackend;
-//! use machi::chain::ethereum::Ethereum;
-//!
-//! #[tokio::main]
-//! async fn main() -> machi::Result<()> {
-//!     let agent = AgentBuilder::new()
-//!         .backend(RigBackend::new(model))
-//!         .chain(Ethereum::mainnet("https://eth.rpc.url"))
-//!         .generate_wallet(12)?
-//!         .build()?;
-//!
-//!     println!("Agent address: {}", agent.address()?);
-//!     Ok(())
-//! }
-//! ```
+extern crate self as machi;
 
+// Core modules
+pub mod core;
+pub mod http;
+pub mod client;
+pub mod completion;
+pub mod embedding;
+
+// Agent and tools
 pub mod agent;
-pub mod backend;
-pub mod chain;
-pub mod error;
-pub mod policy;
-pub mod tools;
-pub mod wallet;
+pub mod tool;
 
-// Re-exports for convenience
-pub use agent::{Agent, AgentBuilder};
-pub use error::{Error, Result};
-pub use wallet::AgentWallet;
+// Storage and extraction
+pub mod store;
+pub mod extract;
+pub mod loader;
+
+// Providers
+pub mod providers;
+
+// Multi-modal
+pub mod modalities;
+
+// Integration and utilities
+pub mod integration;
+pub mod prelude;
+pub mod telemetry;
+
+#[cfg(feature = "experimental")]
+#[cfg_attr(docsrs, doc(cfg(feature = "experimental")))]
+pub mod evals;
+
+// Re-export commonly used types and traits
+pub use completion::message;
+pub use embedding::Embed;
+pub use core::{OneOrMany, EmptyListError};
+
+// Compatibility re-exports (for backward compatibility)
+pub use http as http_client;
+pub use embedding as embeddings;
+pub use store as vector_store;
+pub use extract as extractor;
+pub use completion::streaming;
+pub use core::json_utils;
+pub use core::one_or_many;
+pub use core::wasm_compat;
+pub use modalities::audio::transcription;
+
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use machi_derive::{Embed, machi_tool as tool_macro};
+
+

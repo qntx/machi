@@ -12,6 +12,6 @@ jobs:
   call-publish:
     uses: qntx/workflows/.github/workflows/rust-publish.yml@main
     with:
-      package: "machi machi-cli"
+      package: "machi-derive machi machi-cli"
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

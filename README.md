@@ -12,27 +12,6 @@ A Web3-native AI Agent Framework with embedded wallet capabilities.
 - **Flexible LLM Backends**: rig, OpenAI, and more
 - **Policy Control**: Fine-grained control over autonomous agent actions
 
-## Quick Start
-
-```rust
-use machi::{Agent, AgentBuilder};
-use machi::backend::rig::RigBackend;
-use machi::chain::ethereum::Ethereum;
-
-#[tokio::main]
-async fn main() -> machi::Result<()> {
-    // Create an agent with embedded wallet
-    let agent = AgentBuilder::new()
-        .backend(RigBackend::new(model))
-        .chain(Ethereum::mainnet("https://eth.rpc.url"))
-        .generate_wallet(12)?
-        .build()?;
-
-    println!("Agent address: {}", agent.address()?);
-    Ok(())
-}
-```
-
 ## License
 
 This project is licensed under either of the following licenses, at your option:

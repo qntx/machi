@@ -14,10 +14,12 @@ pub mod errors;
 pub mod multipart;
 pub mod retry;
 pub mod sse;
+pub mod traits;
 
 pub(crate) use errors::instance_error;
 pub use errors::{Error, Result};
 pub use multipart::MultipartForm;
+pub use traits::{HttpClientExt, RetryPolicy};
 
 use std::pin::Pin;
 
@@ -69,37 +71,6 @@ pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
     bearer_auth_header(req.headers_mut().ok_or(Error::NoHeaders)?, auth)?;
 
     Ok(req)
-}
-
-/// A helper trait to make generic requests (both regular and SSE) possible.
-pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
-    /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.
-    fn send<T, U>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
-
-    /// Send a HTTP request with a multipart body, get a response back (as bytes). Response must be able to be turned back into Bytes (although usually for the response, you will probably want to specify Bytes anyway).
-    fn send_multipart<U>(
-        &self,
-        req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
-
-    /// Send a HTTP request, get a streamed response back (as a stream of [`bytes::Bytes`].)
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes>;
 }
 
 impl HttpClientExt for reqwest::Client {

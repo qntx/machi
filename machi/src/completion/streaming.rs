@@ -502,6 +502,52 @@ where
     Ok(())
 }
 
+/// Describes responses from a streamed provider response which is either text, a tool call or a final usage response.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum StreamedAssistantContent<R> {
+    Text(Text),
+    ToolCall(ToolCall),
+    ToolCallDelta {
+        id: String,
+        content: ToolCallDeltaContent,
+    },
+    Reasoning(Reasoning),
+    ReasoningDelta {
+        id: Option<String>,
+        reasoning: String,
+    },
+    Final(R),
+}
+
+impl<R> StreamedAssistantContent<R>
+where
+    R: Clone + Unpin,
+{
+    pub fn text(text: &str) -> Self {
+        Self::Text(Text {
+            text: text.to_string(),
+        })
+    }
+
+    pub fn final_response(res: R) -> Self {
+        Self::Final(res)
+    }
+}
+
+/// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum StreamedUserContent {
+    ToolResult(ToolResult),
+}
+
+impl StreamedUserContent {
+    pub fn tool_result(tool_result: ToolResult) -> Self {
+        Self::ToolResult(tool_result)
+    }
+}
+
 // Test module
 #[cfg(test)]
 mod tests {
@@ -609,51 +655,5 @@ mod tests {
         // Test resume
         stream.resume();
         assert!(!stream.is_paused());
-    }
-}
-
-/// Describes responses from a streamed provider response which is either text, a tool call or a final usage response.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
-pub enum StreamedAssistantContent<R> {
-    Text(Text),
-    ToolCall(ToolCall),
-    ToolCallDelta {
-        id: String,
-        content: ToolCallDeltaContent,
-    },
-    Reasoning(Reasoning),
-    ReasoningDelta {
-        id: Option<String>,
-        reasoning: String,
-    },
-    Final(R),
-}
-
-impl<R> StreamedAssistantContent<R>
-where
-    R: Clone + Unpin,
-{
-    pub fn text(text: &str) -> Self {
-        Self::Text(Text {
-            text: text.to_string(),
-        })
-    }
-
-    pub fn final_response(res: R) -> Self {
-        Self::Final(res)
-    }
-}
-
-/// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
-pub enum StreamedUserContent {
-    ToolResult(ToolResult),
-}
-
-impl StreamedUserContent {
-    pub fn tool_result(tool_result: ToolResult) -> Self {
-        Self::ToolResult(tool_result)
     }
 }

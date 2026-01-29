@@ -1,16 +1,9 @@
 //! Helpers to handle connection delays when receiving errors
 
-use super::Error;
 use std::time::Duration;
 
-pub trait RetryPolicy {
-    /// Submit a new retry delay based on the [`enum@Error`], last retry number and duration, if
-    /// available. A policy may also return `None` if it does not want to retry
-    fn retry(&self, error: &Error, last_retry: Option<(usize, Duration)>) -> Option<Duration>;
-
-    /// Set a new reconnection time if received from an event
-    fn set_reconnection_time(&mut self, duration: Duration);
-}
+use super::Error;
+pub use super::traits::RetryPolicy;
 
 /// A [`RetryPolicy`] which backs off exponentially
 #[derive(Debug, Clone)]

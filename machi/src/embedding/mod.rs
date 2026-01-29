@@ -4,12 +4,13 @@
 //! and document similarity.
 
 pub mod builder;
+pub mod distance;
 pub mod embed;
 pub mod embedding;
 pub mod errors;
 pub mod tool;
+pub mod traits;
 
-pub mod distance;
 pub use builder::EmbeddingsBuilder;
 pub use embed::{Embed, EmbedError, TextEmbedder, to_texts};
 pub use embedding::*;

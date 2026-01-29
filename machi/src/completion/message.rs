@@ -2,9 +2,8 @@ use std::{convert::Infallible, str::FromStr};
 
 use crate::OneOrMany;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
-use super::CompletionError;
+pub use super::errors::MessageError;
 
 // ================================================================
 // Message models
@@ -1065,21 +1064,4 @@ pub enum ToolChoice {
     Specific {
         function_names: Vec<String>,
     },
-}
-
-// ================================================================
-// Error types
-// ================================================================
-
-/// Error type to represent issues with converting messages to and from specific provider messages.
-#[derive(Debug, Error)]
-pub enum MessageError {
-    #[error("Message conversion error: {0}")]
-    ConversionError(String),
-}
-
-impl From<MessageError> for CompletionError {
-    fn from(error: MessageError) -> Self {
-        CompletionError::RequestError(error.into())
-    }
 }

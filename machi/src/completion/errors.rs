@@ -82,3 +82,16 @@ impl PromptError {
         }
     }
 }
+
+/// Error type to represent issues with converting messages to and from specific provider messages.
+#[derive(Debug, Error)]
+pub enum MessageError {
+    #[error("Message conversion error: {0}")]
+    ConversionError(String),
+}
+
+impl From<MessageError> for CompletionError {
+    fn from(error: MessageError) -> Self {
+        CompletionError::RequestError(error.into())
+    }
+}

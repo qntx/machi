@@ -321,7 +321,7 @@ mod tests {
     fn test_multi_byte_characters_across_chunks() {
         let mut decoder = LineDecoder::new();
 
-        // bytes taken from the string '' and arbitrarily split
+        // bytes taken from the string 'известни' (Russian) and arbitrarily split
         // so that some multi-byte characters span multiple chunks
         assert_eq!(decoder.decode(&[0xd0]), Vec::<String>::new());
         assert_eq!(
@@ -335,8 +335,9 @@ mod tests {
             Vec::<String>::new()
         );
 
+        // After newline, should return the complete decoded string
         let decoded = decoder.decode(&[0xa]);
-        assert_eq!(decoded, vec![""]);
+        assert_eq!(decoded, vec!["известни"]);
     }
 
     #[test]

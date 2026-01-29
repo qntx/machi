@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::ToolDefinition,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use super::errors::ToolError;

@@ -1,81 +1,94 @@
 //! Core traits for the embedding module.
 //!
-//! This module defines the [`Embed`] trait which must be implemented for types
-//! that can be embedded by the [`crate::embedding::EmbeddingsBuilder`].
+//! This module defines the fundamental traits for embedding operations:
+//! - [`EmbeddingModel`] - Trait for embedding models that generate text embeddings
+//! - [`ImageEmbeddingModel`] - Trait for embedding models that generate image embeddings
+//! - [`VectorDistance`] - Trait for computing distances between embedding vectors
 
-/// Error type used for when the [Embed::embed] method of the [Embed] trait fails.
-/// Used by default implementations of [Embed] for common types.
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct EmbedError(#[from] Box<dyn std::error::Error + Send + Sync>);
+use crate::core::wasm_compat::*;
 
-impl EmbedError {
-    pub fn new<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
-        EmbedError(Box::new(error))
+use super::{Embedding, EmbeddingError};
+
+/// Trait for embedding models that can generate embeddings for documents.
+pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
+    /// The maximum number of documents that can be embedded in a single request.
+    const MAX_DOCUMENTS: usize;
+
+    type Client;
+
+    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self;
+
+    /// The number of dimensions in the embedding vector.
+    fn ndims(&self) -> usize;
+
+    /// Embed multiple text documents in a single request
+    fn embed_texts(
+        &self,
+        texts: impl IntoIterator<Item = String> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + WasmCompatSend;
+
+    /// Embed a single text document.
+    fn embed_text(
+        &self,
+        text: &str,
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
+        async {
+            Ok(self
+                .embed_texts(vec![text.to_string()])
+                .await?
+                .pop()
+                .expect("There should be at least one embedding"))
+        }
     }
 }
 
-/// Derive this trait for objects that need to be converted to vector embeddings.
-/// The [Embed::embed] method accumulates string values that need to be embedded by adding them to the [TextEmbedder].
-/// If an error occurs, the method should return [EmbedError].
-/// # Example
-/// ```rust
-/// use std::env;
-///
-/// use serde::{Deserialize, Serialize};
-/// use crate::{Embed, embedding::{TextEmbedder, EmbedError}};
-///
-/// struct WordDefinition {
-///     id: String,
-///     word: String,
-///     definitions: String,
-/// }
-///
-/// impl Embed for WordDefinition {
-///     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-///        // Embeddings only need to be generated for `definition` field.
-///        // Split the definitions by comma and collect them into a vector of strings.
-///        // That way, different embeddings can be generated for each definition in the `definitions` string.
-///        self.definitions
-///            .split(",")
-///            .for_each(|s| {
-///                embedder.embed(s.to_string());
-///            });
-///
-///        Ok(())
-///     }
-/// }
-///
-/// let fake_definition = WordDefinition {
-///    id: "1".to_string(),
-///    word: "apple".to_string(),
-///    definitions: "a fruit, a tech company".to_string(),
-/// };
-///
-/// assert_eq!(embedding::to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);
-/// ```
-pub trait Embed {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError>;
-}
+/// Trait for embedding models that can generate embeddings for images.
+pub trait ImageEmbeddingModel: Clone + WasmCompatSend + WasmCompatSync {
+    /// The maximum number of images that can be embedded in a single request.
+    const MAX_DOCUMENTS: usize;
 
-/// Accumulates string values that need to be embedded.
-/// Used by the [Embed] trait.
-#[derive(Default)]
-pub struct TextEmbedder {
-    pub(crate) texts: Vec<String>,
-}
+    /// The number of dimensions in the embedding vector.
+    fn ndims(&self) -> usize;
 
-impl TextEmbedder {
-    /// Adds input `text` string to the list of texts in the [TextEmbedder] that need to be embedded.
-    pub fn embed(&mut self, text: String) {
-        self.texts.push(text);
+    /// Embed multiple images in a single request from bytes.
+    fn embed_images(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + Send;
+
+    /// Embed a single image from bytes.
+    fn embed_image<'a>(
+        &'a self,
+        bytes: &'a [u8],
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
+        async move {
+            Ok(self
+                .embed_images(vec![bytes.to_owned()])
+                .await?
+                .pop()
+                .expect("There should be at least one embedding"))
+        }
     }
 }
 
-/// Utility function that returns a vector of strings that need to be embedded for a
-/// given object that implements the [Embed] trait.
-pub fn to_texts(item: impl Embed) -> Result<Vec<String>, EmbedError> {
-    let mut embedder = TextEmbedder::default();
-    item.embed(&mut embedder)?;
-    Ok(embedder.texts)
+/// Trait for computing distances between embedding vectors.
+pub trait VectorDistance {
+    /// Get dot product of two embedding vectors
+    fn dot_product(&self, other: &Self) -> f64;
+
+    /// Get cosine similarity of two embedding vectors.
+    /// If `normalized` is true, the dot product is returned.
+    fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64;
+
+    /// Get angular distance of two embedding vectors.
+    fn angular_distance(&self, other: &Self, normalized: bool) -> f64;
+
+    /// Get euclidean distance of two embedding vectors.
+    fn euclidean_distance(&self, other: &Self) -> f64;
+
+    /// Get manhattan distance of two embedding vectors.
+    fn manhattan_distance(&self, other: &Self) -> f64;
+
+    /// Get chebyshev distance of two embedding vectors.
+    fn chebyshev_distance(&self, other: &Self) -> f64;
 }

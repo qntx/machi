@@ -2,6 +2,18 @@
 
 use crate::http;
 
+/// Error type used for when the [Embed::embed] method of the [Embed] trait fails.
+/// Used by default implementations of [Embed] for common types.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct EmbedError(#[from] Box<dyn std::error::Error + Send + Sync>);
+
+impl EmbedError {
+    pub fn new<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
+        EmbedError(Box::new(error))
+    }
+}
+
 /// Errors that can occur during embedding operations.
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {

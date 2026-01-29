@@ -11,17 +11,17 @@ use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
 use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
+use crate::completion::message::{
+    AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
+    MimeType, Text,
+};
 use crate::core::json_utils;
 use crate::core::one_or_many::string_or_one_or_many;
 use crate::http;
 use crate::http::HttpClientExt;
-use crate::message::{
-    AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
-    MimeType, Text,
-};
 
 use crate::core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{OneOrMany, completion, message};
+use crate::{completion, completion::message, core::OneOrMany};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tracing::{Instrument, Level, enabled, info_span};
@@ -203,7 +203,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
                 for user_content in content {
                     match user_content {
-                        crate::message::UserContent::Text(Text { text }) => {
+                        crate::completion::message::UserContent::Text(Text { text }) => {
                             items.push(InputItem {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
@@ -212,7 +212,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
-                        crate::message::UserContent::ToolResult(
+                        crate::completion::message::UserContent::ToolResult(
                             crate::completion::message::ToolResult {
                                 call_id,
                                 content: tool_content,
@@ -241,7 +241,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 });
                             }
                         }
-                        crate::message::UserContent::Document(Document {
+                        crate::completion::message::UserContent::Document(Document {
                             data,
                             media_type: Some(DocumentMediaType::PDF),
                             ..
@@ -277,7 +277,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             })
                         }
                         // todo: should we ensure this takes into account file size?
-                        crate::message::UserContent::Document(Document {
+                        crate::completion::message::UserContent::Document(Document {
                             data: DocumentSourceKind::Base64(text),
                             ..
                         }) => items.push(InputItem {
@@ -287,7 +287,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 name: None,
                             }),
                         }),
-                        crate::message::UserContent::Document(Document {
+                        crate::completion::message::UserContent::Document(Document {
                             data: DocumentSourceKind::String(text),
                             ..
                         }) => items.push(InputItem {
@@ -297,12 +297,14 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 name: None,
                             }),
                         }),
-                        crate::message::UserContent::Image(crate::message::Image {
-                            data,
-                            media_type,
-                            detail,
-                            ..
-                        }) => {
+                        crate::completion::message::UserContent::Image(
+                            crate::completion::message::Image {
+                                data,
+                                media_type,
+                                detail,
+                                ..
+                            },
+                        ) => {
                             let url = match data {
                                 DocumentSourceKind::Base64(data) => {
                                     let media_type = if let Some(media_type) = media_type {
@@ -351,7 +353,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
                 for assistant_content in content {
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text { text }) => {
+                        crate::completion::message::AssistantContent::Text(Text { text }) => {
                             let id = id.as_ref().unwrap_or(&String::default()).clone();
                             items.push(InputItem {
                                 role: Some(Role::Assistant),
@@ -365,12 +367,14 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
-                        crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id: tool_id,
-                            call_id,
-                            function,
-                            ..
-                        }) => {
+                        crate::completion::message::AssistantContent::ToolCall(
+                            crate::completion::message::ToolCall {
+                                id: tool_id,
+                                call_id,
+                                function,
+                                ..
+                            },
+                        ) => {
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCall(OutputFunctionCall {
@@ -382,8 +386,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
-                        crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { id, reasoning, .. },
+                        crate::completion::message::AssistantContent::Reasoning(
+                            crate::completion::message::Reasoning { id, reasoning, .. },
                         ) => {
                             items.push(InputItem {
                                 role: None,
@@ -396,7 +400,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
-                        crate::message::AssistantContent::Image(_) => {
+                        crate::completion::message::AssistantContent::Image(_) => {
                             return Err(CompletionError::ProviderError(
                                 "Assistant image content is not supported in OpenAI Responses API"
                                     .to_string(),
@@ -1402,7 +1406,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                 let assistant_message_id = id;
 
                 match content.first() {
-                    crate::message::AssistantContent::Text(Text { text }) => {
+                    crate::completion::message::AssistantContent::Text(Text { text }) => {
                         Ok(vec![Message::Assistant {
                             id: assistant_message_id
                                 .expect("The assistant message ID should exist"),
@@ -1413,7 +1417,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             name: None,
                         }])
                     }
-                    crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
+                    crate::completion::message::AssistantContent::ToolCall(crate::completion::message::ToolCall {
                         id,
                         call_id,
                         function,
@@ -1432,7 +1436,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         name: None,
                         status: ToolStatus::Completed,
                     }]),
-                    crate::message::AssistantContent::Reasoning(crate::message::Reasoning {
+                    crate::completion::message::AssistantContent::Reasoning(crate::completion::message::Reasoning {
                         id,
                         reasoning,
                         ..
@@ -1447,7 +1451,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         name: None,
                         status: (ToolStatus::Completed),
                     }]),
-                    crate::message::AssistantContent::Image(_) => {
+                    crate::completion::message::AssistantContent::Image(_) => {
                         Err(MessageError::ConversionError(
                             "Assistant image content is not supported in OpenAI Responses API".into(),
                         ))

@@ -1,4 +1,4 @@
-use crate::Embed;
+use crate::embedding::Embed;
 use crate::embedding::{EmbeddingModel, EmbeddingsBuilder};
 
 /// A provider client with embedding capabilities.

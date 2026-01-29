@@ -3,10 +3,10 @@ use crate::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
         ProviderClient,
     },
+    core::wasm_compat::{WasmCompatSend, WasmCompatSync},
     extract::ExtractorBuilder,
     http::{self, HttpClientExt},
     prelude::CompletionClient,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -227,11 +227,11 @@ pub(crate) enum ApiResponse<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::message::ImageDetail;
+    use crate::completion::message::ImageDetail;
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
-    use crate::{OneOrMany, message};
+    use crate::{completion::message, core::OneOrMany};
     use serde_path_to_error::deserialize;
 
     #[test]

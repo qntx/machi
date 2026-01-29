@@ -1,6 +1,6 @@
 use std::{convert::Infallible, str::FromStr};
 
-use crate::OneOrMany;
+use crate::core::OneOrMany;
 use serde::{Deserialize, Serialize};
 
 pub use super::errors::MessageError;

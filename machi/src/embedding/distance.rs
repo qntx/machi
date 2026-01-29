@@ -1,23 +1,4 @@
-pub trait VectorDistance {
-    /// Get dot product of two embedding vectors
-    fn dot_product(&self, other: &Self) -> f64;
-
-    /// Get cosine similarity of two embedding vectors.
-    /// If `normalized` is true, the dot product is returned.
-    fn cosine_similarity(&self, other: &Self, normalized: bool) -> f64;
-
-    /// Get angular distance of two embedding vectors.
-    fn angular_distance(&self, other: &Self, normalized: bool) -> f64;
-
-    /// Get euclidean distance of two embedding vectors.
-    fn euclidean_distance(&self, other: &Self) -> f64;
-
-    /// Get manhattan distance of two embedding vectors.
-    fn manhattan_distance(&self, other: &Self) -> f64;
-
-    /// Get chebyshev distance of two embedding vectors.
-    fn chebyshev_distance(&self, other: &Self) -> f64;
-}
+pub use super::traits::VectorDistance;
 
 #[cfg(not(feature = "rayon"))]
 impl VectorDistance for crate::embedding::Embedding {

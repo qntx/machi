@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
 use crate::{
+    completion::message::ToolChoice,
     completion::{CompletionModel, Document},
-    message::ToolChoice,
     store::VectorStoreIndexDyn,
     tool::{
         Tool, ToolDyn, ToolSet,

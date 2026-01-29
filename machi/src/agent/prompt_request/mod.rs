@@ -16,12 +16,12 @@ use futures::{StreamExt, stream};
 use tracing::info_span;
 
 use crate::{
-    OneOrMany,
+    completion::message::{AssistantContent, UserContent},
     completion::{Completion, CompletionModel, Message, PromptError, Usage},
-    json_utils,
-    message::{AssistantContent, UserContent},
+    core::OneOrMany,
+    core::json_utils,
+    core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
     tool::ToolSetError,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use super::Agent;

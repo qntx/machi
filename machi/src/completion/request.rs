@@ -63,11 +63,11 @@
 //! For more information on how to use the completion functionality, refer to the documentation of
 //! the individual traits, structs, and enums defined in this module.
 
-use crate::OneOrMany;
-use crate::message::ToolChoice;
+use super::message::ToolChoice;
+use crate::core::OneOrMany;
 use crate::{
+    completion::message::{Message, UserContent},
     core::json_utils,
-    message::{Message, UserContent},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

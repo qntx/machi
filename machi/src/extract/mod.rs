@@ -40,9 +40,9 @@ pub use errors::ExtractionError;
 
 use crate::{
     agent::{Agent, AgentBuilder, AgentBuilderSimple},
+    completion::message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
     completion::{Completion, CompletionModel, ToolDefinition},
     core::wasm_compat::{WasmCompatSend, WasmCompatSync},
-    message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
     tool::Tool,
 };
 

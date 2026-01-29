@@ -3,7 +3,10 @@
 use crate::completion::streaming::{self, RawStreamingChoice};
 use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage, Usage};
 use crate::http::{self as http_client, HttpClientExt};
-use crate::{OneOrMany, json_utils, message};
+use crate::{
+    completion::message,
+    core::{OneOrMany, json_utils},
+};
 use async_stream::try_stream;
 use bytes::Bytes;
 use futures::StreamExt;

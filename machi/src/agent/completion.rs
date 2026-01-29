@@ -1,15 +1,15 @@
 use super::prompt_request::{self, PromptRequest};
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
+    completion::message::ToolChoice,
+    completion::streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         GetTokenUsage, Message, Prompt, PromptError,
     },
-    message::ToolChoice,
+    core::wasm_compat::WasmCompatSend,
     store::{VectorStoreError, request::VectorSearchRequest},
-    streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     tool::server::ToolServerHandle,
-    wasm_compat::WasmCompatSend,
 };
 use futures::{StreamExt, TryStreamExt, stream};
 use std::{collections::HashMap, sync::Arc};

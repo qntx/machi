@@ -7,15 +7,15 @@ use super::{
     client::{ApiErrorResponse, ApiResponse},
     streaming::StreamingCompletionResponse,
 };
+use crate::completion::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
 use crate::core::one_or_many::string_or_one_or_many;
 use crate::core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::http::{self, HttpClientExt};
-use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
-use crate::{OneOrMany, completion, json_utils, message};
+use crate::{completion, completion::message, core::OneOrMany, core::json_utils};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::fmt;
@@ -353,9 +353,9 @@ pub enum ToolChoice {
     Required,
 }
 
-impl TryFrom<crate::message::ToolChoice> for ToolChoice {
+impl TryFrom<crate::completion::message::ToolChoice> for ToolChoice {
     type Error = CompletionError;
-    fn try_from(value: crate::message::ToolChoice) -> Result<Self, Self::Error> {
+    fn try_from(value: crate::completion::message::ToolChoice) -> Result<Self, Self::Error> {
         let res = match value {
             message::ToolChoice::Specific { .. } => {
                 return Err(CompletionError::ProviderError(

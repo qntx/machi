@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::collections::HashMap;
 
-use crate::{OneOrMany, embedding::Embedding};
+use crate::{core::OneOrMany, embedding::Embedding};
 
 use super::{IndexStrategy, in_memory_store::InMemoryVectorStore};
 

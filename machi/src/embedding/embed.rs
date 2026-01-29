@@ -9,8 +9,36 @@
 //!
 //! Finally, the module implements [Embed] for many common primitive types.
 
-// Re-export core types from traits module
-pub use super::traits::{Embed, EmbedError, TextEmbedder, to_texts};
+pub use super::errors::EmbedError;
+
+/// Derive this trait for objects that need to be converted to vector embeddings.
+/// The [Embed::embed] method accumulates string values that need to be embedded by adding them to the [TextEmbedder].
+/// If an error occurs, the method should return [EmbedError].
+pub trait Embed {
+    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError>;
+}
+
+/// Accumulates string values that need to be embedded.
+/// Used by the [Embed] trait.
+#[derive(Default)]
+pub struct TextEmbedder {
+    pub(crate) texts: Vec<String>,
+}
+
+impl TextEmbedder {
+    /// Adds input `text` string to the list of texts in the [TextEmbedder] that need to be embedded.
+    pub fn embed(&mut self, text: String) {
+        self.texts.push(text);
+    }
+}
+
+/// Utility function that returns a vector of strings that need to be embedded for a
+/// given object that implements the [Embed] trait.
+pub fn to_texts(item: impl Embed) -> Result<Vec<String>, EmbedError> {
+    let mut embedder = TextEmbedder::default();
+    item.embed(&mut embedder)?;
+    Ok(embedder.texts)
+}
 
 impl Embed for String {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {

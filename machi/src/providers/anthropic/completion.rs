@@ -1,13 +1,12 @@
 //! Anthropic completion api implementation
 
 use crate::{
-    OneOrMany,
+    completion::message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     completion::{self, CompletionError, GetTokenUsage},
+    core::wasm_compat::*,
+    core::{OneOrMany, string_or_one_or_many},
     http::HttpClientExt,
-    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
-    one_or_many::string_or_one_or_many,
     telemetry::{ProviderResponseExt, SpanCombinator},
-    wasm_compat::*,
 };
 use std::{convert::Infallible, str::FromStr};
 

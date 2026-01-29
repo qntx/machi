@@ -4,11 +4,10 @@ use crate::http::HttpClientExt;
 use crate::providers::openai::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
-    OneOrMany,
+    completion::message::{self},
     completion::{self, CompletionError, CompletionRequest},
-    json_utils,
-    message::{self},
-    one_or_many::string_or_one_or_many,
+    core::json_utils,
+    core::{OneOrMany, string_or_one_or_many},
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;

@@ -1,7 +1,10 @@
 //! Ollama message types and conversions
 
-use crate::message::{DocumentSourceKind, ImageDetail, Text};
-use crate::{OneOrMany, completion, json_utils, message};
+use crate::completion::message::{DocumentSourceKind, ImageDetail, Text};
+use crate::{
+    completion::message,
+    core::{OneOrMany, json_utils},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
@@ -28,8 +31,8 @@ pub struct Function {
     pub arguments: Value,
 }
 
-impl From<crate::message::ToolCall> for ToolCall {
-    fn from(tool_call: crate::message::ToolCall) -> Self {
+impl From<crate::completion::message::ToolCall> for ToolCall {
+    fn from(tool_call: crate::completion::message::ToolCall) -> Self {
         Self {
             r#type: ToolType::Function,
             function: Function {
@@ -91,37 +94,44 @@ impl Message {
 
 // ---------- Message Conversions ----------
 
-impl TryFrom<crate::message::Message> for Vec<Message> {
-    type Error = crate::message::MessageError;
-    fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
-        use crate::message::Message as InternalMessage;
+impl TryFrom<crate::completion::message::Message> for Vec<Message> {
+    type Error = crate::completion::message::MessageError;
+    fn try_from(internal_msg: crate::completion::message::Message) -> Result<Self, Self::Error> {
+        use crate::completion::message::Message as InternalMessage;
         match internal_msg {
             InternalMessage::User { content, .. } => {
                 let (tool_results, other_content): (Vec<_>, Vec<_>) =
                     content.into_iter().partition(|content| {
-                        matches!(content, crate::message::UserContent::ToolResult(_))
+                        matches!(
+                            content,
+                            crate::completion::message::UserContent::ToolResult(_)
+                        )
                     });
 
                 if !tool_results.is_empty() {
                     tool_results
                         .into_iter()
                         .map(|content| match content {
-                            crate::message::UserContent::ToolResult(
-                                crate::message::ToolResult { id, content, .. },
+                            crate::completion::message::UserContent::ToolResult(
+                                crate::completion::message::ToolResult { id, content, .. },
                             ) => {
                                 let content_string = content
                                     .into_iter()
                                     .map(|content| match content {
-                                        crate::message::ToolResultContent::Text(text) => text.text,
+                                        crate::completion::message::ToolResultContent::Text(
+                                            text,
+                                        ) => text.text,
                                         _ => "[Non-text content]".to_string(),
                                     })
                                     .collect::<Vec<_>>()
                                     .join("\n");
 
-                                Ok::<_, crate::message::MessageError>(Message::ToolResult {
-                                    name: id,
-                                    content: content_string,
-                                })
+                                Ok::<_, crate::completion::message::MessageError>(
+                                    Message::ToolResult {
+                                        name: id,
+                                        content: content_string,
+                                    },
+                                )
                             }
                             _ => unreachable!(),
                         })
@@ -131,15 +141,17 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         (Vec::new(), Vec::new()),
                         |(mut texts, mut images), content| {
                             match content {
-                                crate::message::UserContent::Text(crate::message::Text {
-                                    text,
-                                }) => texts.push(text),
-                                crate::message::UserContent::Image(crate::message::Image {
-                                    data: DocumentSourceKind::Base64(data),
-                                    ..
-                                }) => images.push(data),
-                                crate::message::UserContent::Document(
-                                    crate::message::Document {
+                                crate::completion::message::UserContent::Text(
+                                    crate::completion::message::Text { text },
+                                ) => texts.push(text),
+                                crate::completion::message::UserContent::Image(
+                                    crate::completion::message::Image {
+                                        data: DocumentSourceKind::Base64(data),
+                                        ..
+                                    },
+                                ) => images.push(data),
+                                crate::completion::message::UserContent::Document(
+                                    crate::completion::message::Document {
                                         data:
                                             DocumentSourceKind::Base64(data)
                                             | DocumentSourceKind::String(data),
@@ -175,19 +187,19 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
 
                 for content in content.into_iter() {
                     match content {
-                        crate::message::AssistantContent::Text(text) => {
+                        crate::completion::message::AssistantContent::Text(text) => {
                             text_content.push(text.text)
                         }
-                        crate::message::AssistantContent::ToolCall(tool_call) => {
+                        crate::completion::message::AssistantContent::ToolCall(tool_call) => {
                             tool_calls.push(tool_call)
                         }
-                        crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { reasoning, .. },
+                        crate::completion::message::AssistantContent::Reasoning(
+                            crate::completion::message::Reasoning { reasoning, .. },
                         ) => {
                             thinking = Some(reasoning.first().cloned().unwrap_or(String::new()));
                         }
-                        crate::message::AssistantContent::Image(_) => {
-                            return Err(crate::message::MessageError::ConversionError(
+                        crate::completion::message::AssistantContent::Image(_) => {
+                            return Err(crate::completion::message::MessageError::ConversionError(
                                 "Ollama currently doesn't support images.".into(),
                             ));
                         }
@@ -213,9 +225,7 @@ impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
         match msg {
             Message::User { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
+                content: OneOrMany::one(message::UserContent::Text(Text { text: content })),
             },
             Message::Assistant {
                 content,
@@ -223,11 +233,9 @@ impl From<Message> for crate::completion::Message {
                 ..
             } => {
                 let mut assistant_contents =
-                    vec![completion::message::AssistantContent::Text(Text {
-                        text: content,
-                    })];
+                    vec![message::AssistantContent::Text(Text { text: content })];
                 for tc in tool_calls {
-                    assistant_contents.push(completion::message::AssistantContent::tool_call(
+                    assistant_contents.push(message::AssistantContent::tool_call(
                         tc.function.name.clone(),
                         tc.function.name,
                         tc.function.arguments,
@@ -239,9 +247,7 @@ impl From<Message> for crate::completion::Message {
                 }
             }
             Message::System { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
+                content: OneOrMany::one(message::UserContent::Text(Text { text: content })),
             },
             Message::ToolResult { name, content } => crate::completion::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
@@ -339,7 +345,7 @@ mod tests {
             crate::completion::Message::User { content } => {
                 let first_content = content.first();
                 match first_content {
-                    completion::message::UserContent::Text(text_struct) => {
+                    crate::completion::message::UserContent::Text(text_struct) => {
                         assert_eq!(text_struct.text, "Test message");
                     }
                     _ => panic!("Expected text content in conversion"),
@@ -351,19 +357,21 @@ mod tests {
 
     #[test]
     fn test_message_conversion_with_thinking() {
-        let reasoning_content = crate::message::Reasoning {
+        let reasoning_content = crate::completion::message::Reasoning {
             id: None,
             reasoning: vec!["Step 1: Consider the problem".to_string()],
             signature: None,
         };
 
-        let internal_msg = crate::message::Message::Assistant {
+        let internal_msg = crate::completion::message::Message::Assistant {
             id: None,
-            content: crate::OneOrMany::many(vec![
-                crate::message::AssistantContent::Reasoning(reasoning_content),
-                crate::message::AssistantContent::Text(crate::message::Text {
-                    text: "The answer is X".to_string(),
-                }),
+            content: crate::core::OneOrMany::many(vec![
+                crate::completion::message::AssistantContent::Reasoning(reasoning_content),
+                crate::completion::message::AssistantContent::Text(
+                    crate::completion::message::Text {
+                        text: "The answer is X".to_string(),
+                    },
+                ),
             ])
             .unwrap(),
         };

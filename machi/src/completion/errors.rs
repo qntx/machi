@@ -1,7 +1,7 @@
 //! Error types for the completion module.
 
+use super::message::Message;
 use crate::http as http_client;
-use crate::message::Message;
 use crate::tool::ToolSetError;
 use crate::tool::server::ToolServerError;
 use thiserror::Error;

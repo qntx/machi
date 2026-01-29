@@ -10,8 +10,8 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use super::message::Message;
 use crate::core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::message::Message;
 
 use super::errors::{CompletionError, PromptError};
 use super::request::{CompletionRequest, CompletionRequestBuilder, CompletionResponse, Usage};

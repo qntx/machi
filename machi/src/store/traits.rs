@@ -9,8 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    Embed, OneOrMany,
-    core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    core::{
+        one_or_many::OneOrMany,
+        wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    },
+    embedding::Embed,
     embedding::Embedding,
     store::request::{Filter, SearchFilter},
 };

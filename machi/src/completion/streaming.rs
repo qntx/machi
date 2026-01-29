@@ -8,7 +8,7 @@
 //! - [StreamingCompletion]: Defines a low-level streaming LLM completion interface
 //!
 
-use crate::OneOrMany;
+use super::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction, ToolResult};
 use crate::agent::Agent;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::client::FinalCompletionResponse;
@@ -16,8 +16,8 @@ use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
 };
+use crate::core::OneOrMany;
 use crate::core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction, ToolResult};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};

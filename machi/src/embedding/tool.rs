@@ -1,6 +1,6 @@
 //! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::ToolEmbedding]
 
-use crate::{Embed, tool::ToolEmbeddingDyn};
+use crate::{embedding::Embed, tool::ToolEmbeddingDyn};
 use serde::Serialize;
 
 use super::embed::EmbedError;

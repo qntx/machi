@@ -199,8 +199,8 @@ where
 pub mod xai_api_types {
     use serde::{Deserialize, Serialize};
 
-    use crate::OneOrMany;
     use crate::completion::{self, CompletionError};
+    use crate::core::OneOrMany;
     use crate::providers::openai::{AssistantContent, Message};
 
     impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {

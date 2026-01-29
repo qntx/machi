@@ -157,8 +157,8 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        Embed,
         client::Nothing,
+        embedding::Embed,
         embedding::{
             Embedding, EmbeddingModel,
             embed::{EmbedError, TextEmbedder},

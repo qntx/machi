@@ -19,15 +19,6 @@ pub mod store;
 pub mod telemetry;
 pub mod tool;
 
-pub use completion::message;
-pub use completion::streaming;
-pub use core::json_utils;
-pub use core::one_or_many;
-pub use core::wasm_compat;
-pub use core::{EmptyListError, OneOrMany};
-pub use embedding::Embed;
-pub use modalities::audio::transcription;
-
 #[cfg(feature = "audio")]
 pub use modalities::audio::generation as audio_generation;
 #[cfg(feature = "image")]

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::{
-    OneOrMany,
+    core::OneOrMany,
     embedding::{Embedding, EmbeddingModel, distance::VectorDistance},
     store::request::Filter,
 };
@@ -468,7 +468,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::{OneOrMany, embedding::embedding::Embedding, store::IndexStrategy};
+    use crate::{core::OneOrMany, embedding::Embedding, store::IndexStrategy};
 
     use super::{InMemoryVectorStore, RankingItem};
 

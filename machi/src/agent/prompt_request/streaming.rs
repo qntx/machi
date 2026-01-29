@@ -1,11 +1,13 @@
 use crate::{
-    OneOrMany,
     agent::CancelSignal,
     completion::GetTokenUsage,
-    json_utils,
-    message::{AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent},
-    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletion},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+    completion::message::{
+        AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent,
+    },
+    completion::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletion},
+    core::OneOrMany,
+    core::json_utils,
+    core::wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -17,8 +19,8 @@ use tracing_futures::Instrument;
 use super::ToolCallHookAction;
 use crate::{
     agent::Agent,
+    completion::message::{Message, Text},
     completion::{CompletionModel, PromptError},
-    message::{Message, Text},
 };
 
 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
@@ -382,8 +384,8 @@ where
                                 }
                             }
                         }
-                        Ok(StreamedAssistantContent::Reasoning(crate::message::Reasoning { reasoning, id, signature })) => {
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(crate::message::Reasoning { reasoning, id, signature })));
+                        Ok(StreamedAssistantContent::Reasoning(crate::completion::message::Reasoning { reasoning, id, signature })) => {
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(crate::completion::message::Reasoning { reasoning, id, signature })));
                             did_call_tool = false;
                         },
                         Ok(StreamedAssistantContent::ReasoningDelta { reasoning, id }) => {

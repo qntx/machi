@@ -8,12 +8,12 @@ use serde_json::json;
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
+use crate::completion::message::{ToolCall, ToolFunction};
 use crate::completion::streaming::{self, RawStreamingChoice};
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::core::json_utils::{self, merge};
 use crate::http::HttpClientExt;
 use crate::http::sse::{Event, GenericEventSource};
-use crate::message::{ToolCall, ToolFunction};
 use crate::providers::openai::completion::{self, CompletionModel, OpenAIRequestParams, Usage};
 
 // ================================================================

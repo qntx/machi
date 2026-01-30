@@ -23,9 +23,12 @@ impl<'a> FileLoader<'a, PathBuf> {
 }
 
 impl Readable for PathBuf {
+    #[inline]
     fn read(self) -> Result<String, FileLoaderError> {
         fs::read_to_string(self).map_err(FileLoaderError::IoError)
     }
+
+    #[inline]
     fn read_with_path(self) -> Result<(PathBuf, String), FileLoaderError> {
         let contents = fs::read_to_string(&self);
         Ok((self, contents?))
@@ -200,7 +203,8 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
 }
 
 impl<'a> FileLoader<'a, Vec<u8>> {
-    /// Ingest a  as a byte array.
+    /// Ingest a byte array.
+    #[inline]
     pub fn from_bytes(bytes: Vec<u8>) -> FileLoader<'a, Vec<u8>> {
         FileLoader {
             iterator: Box::new(vec![bytes].into_iter()),
@@ -208,6 +212,7 @@ impl<'a> FileLoader<'a, Vec<u8>> {
     }
 
     /// Ingest multiple byte arrays.
+    #[inline]
     pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> FileLoader<'a, Vec<u8>> {
         FileLoader {
             iterator: Box::new(bytes_vec.into_iter()),
@@ -247,6 +252,7 @@ impl<'a, T> IntoIterator for FileLoader<'a, T> {
 impl<T> Iterator for IntoIter<'_, T> {
     type Item = T;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iterator.next()
     }

@@ -21,6 +21,7 @@ pub(crate) enum ToolType {
 }
 
 impl ToolType {
+    #[inline]
     pub fn name(&self) -> String {
         match self {
             ToolType::Simple(tool) => tool.name(),
@@ -68,11 +69,13 @@ impl ToolSet {
     }
 
     /// Create a toolset builder
+    #[inline]
     pub fn builder() -> ToolSetBuilder {
         ToolSetBuilder::default()
     }
 
     /// Check if the toolset contains a tool with the given name
+    #[inline]
     pub fn contains(&self, toolname: &str) -> bool {
         self.tools.contains_key(toolname)
     }
@@ -88,15 +91,20 @@ impl ToolSet {
         self.tools.insert(tool.name(), ToolType::Simple(tool));
     }
 
+    /// Remove a tool from the toolset.
+    #[inline]
     pub fn delete_tool(&mut self, tool_name: &str) {
         let _ = self.tools.remove(tool_name);
     }
 
-    /// Merge another toolset into this one
+    /// Merge another toolset into this one.
+    #[inline]
     pub fn add_tools(&mut self, toolset: ToolSet) {
         self.tools.extend(toolset.tools);
     }
 
+    /// Get a tool by name.
+    #[inline]
     pub(crate) fn get(&self, toolname: &str) -> Option<&ToolType> {
         self.tools.get(toolname)
     }

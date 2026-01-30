@@ -79,6 +79,8 @@ impl<M> ImageGenerationRequestBuilder<M>
 where
     M: ImageGenerationModel,
 {
+    /// Creates a new image generation request builder.
+    #[inline]
     pub fn new(model: M) -> Self {
         Self {
             model,

@@ -83,6 +83,7 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     type Output: Serialize;
 
     /// A method returning the name of the tool.
+    #[inline]
     fn name(&self) -> String {
         Self::NAME.to_string()
     }

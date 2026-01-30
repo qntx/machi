@@ -36,22 +36,27 @@ pub type StreamingResponse = Response<BoxedStream>;
 pub struct NoBody;
 
 impl From<NoBody> for Bytes {
+    #[inline]
     fn from(_: NoBody) -> Self {
         Bytes::new()
     }
 }
 
 impl From<NoBody> for Body {
+    #[inline]
     fn from(_: NoBody) -> Self {
         reqwest::Body::default()
     }
 }
 
+/// Extracts text from a response body.
 pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     let text = response.into_body().await?;
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
 
+/// Creates an Authorization header with Bearer token.
+#[inline]
 pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue)> {
     Ok((
         http::header::AUTHORIZATION,
@@ -59,17 +64,18 @@ pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue
     ))
 }
 
+/// Inserts a Bearer auth header into the given header map.
+#[inline]
 pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Result<()> {
     let (k, v) = make_auth_header(key)?;
-
     headers.insert(k, v);
-
     Ok(())
 }
 
+/// Adds Bearer authentication to a request builder.
+#[inline]
 pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
     bearer_auth_header(req.headers_mut().ok_or(Error::NoHeaders)?, auth)?;
-
     Ok(req)
 }
 

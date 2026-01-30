@@ -136,10 +136,12 @@ impl<M> TranscriptionRequestBuilder<M>
 where
     M: TranscriptionModel,
 {
+    /// Creates a new transcription request builder.
+    #[inline]
     pub fn new(model: M) -> Self {
-        TranscriptionRequestBuilder {
+        Self {
             model,
-            data: vec![],
+            data: Vec::new(),
             filename: None,
             language: None,
             prompt: None,

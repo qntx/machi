@@ -45,6 +45,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ///     .documents(documents)
     ///     .build();
     /// ```
+    #[inline]
     pub fn builder() -> InMemoryVectorStoreBuilder<D> {
         InMemoryVectorStoreBuilder::new()
     }
@@ -376,18 +377,26 @@ impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
 type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
 
 impl<D: Serialize> InMemoryVectorStore<D> {
+    /// Creates an index from this store with the given embedding model.
+    #[inline]
     pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<M, D> {
         InMemoryVectorIndex::new(model, self)
     }
 
+    /// Returns an iterator over all documents in the store.
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
         self.embeddings.iter()
     }
 
+    /// Returns the number of documents in the store.
+    #[inline]
     pub fn len(&self) -> usize {
         self.embeddings.len()
     }
 
+    /// Returns `true` if the store contains no documents.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.embeddings.is_empty()
     }
@@ -399,18 +408,26 @@ pub struct InMemoryVectorIndex<M: EmbeddingModel, D: Serialize> {
 }
 
 impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
+    /// Creates a new index with the given model and store.
+    #[inline]
     pub fn new(model: M, store: InMemoryVectorStore<D>) -> Self {
         Self { model, store }
     }
 
+    /// Returns an iterator over all documents in the store.
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
         self.store.iter()
     }
 
+    /// Returns the number of documents in the store.
+    #[inline]
     pub fn len(&self) -> usize {
         self.store.len()
     }
 
+    /// Returns `true` if the store contains no documents.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.store.is_empty()
     }

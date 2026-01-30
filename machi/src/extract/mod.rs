@@ -188,10 +188,14 @@ where
         Ok(serde_json::from_value(raw_data)?)
     }
 
+    /// Returns a reference to the inner agent.
+    #[inline]
     pub fn get_inner(&self) -> &Agent<M> {
         &self.agent
     }
 
+    /// Consumes the extractor and returns the inner agent.
+    #[inline]
     pub fn into_inner(self) -> Agent<M> {
         self.agent
     }
@@ -213,6 +217,8 @@ where
     M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
+    /// Creates a new extractor builder with the given completion model.
+    #[inline]
     pub fn new(model: M) -> Self {
         Self {
             agent_builder: AgentBuilder::new(model)

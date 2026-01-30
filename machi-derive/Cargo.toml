@@ -18,12 +18,5 @@ quote.workspace = true
 serde_json.workspace = true
 syn.workspace = true
 
-[dev-dependencies]
-machi.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-tokio = { workspace = true, features = ["full"] }
-tracing-subscriber.workspace = true
-
 [lints]
 workspace = true

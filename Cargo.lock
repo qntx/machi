@@ -1632,14 +1632,10 @@ dependencies = [
  "convert_case",
  "deluxe",
  "indoc",
- "machi",
  "proc-macro2",
  "quote",
- "serde",
  "serde_json",
  "syn 2.0.114",
- "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]

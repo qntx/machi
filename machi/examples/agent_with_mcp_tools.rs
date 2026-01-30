@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     let agent = client
         .agent(QWEN3)
         .preamble("You are a helpful assistant. Use the available tools to answer questions.")
-        .mcp_tools(mcp)
+        .mcp(mcp)
         .build();
 
     // Use agent with MCP tools

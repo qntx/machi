@@ -42,7 +42,7 @@
 //! let agent = client
 //!     .agent(model)
 //!     .preamble("You are a helpful assistant.")
-//!     .mcp_tools(mcp)
+//!     .mcp(mcp)
 //!     .build();
 //! ```
 
@@ -51,7 +51,7 @@ mod error;
 mod tool;
 mod transport;
 
-pub use client::{McpClient, McpClientBuilder, McpClientConfig};
+pub use client::{IntoMcpTools, McpClient, McpClientBuilder, McpClientConfig, MergedMcpClients};
 pub use error::McpError;
 pub use tool::McpTool;
 pub use transport::TransportConfig;

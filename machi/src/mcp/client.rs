@@ -228,14 +228,37 @@ impl McpClient {
 /// Supports both HTTP and stdio transports with a declarative API
 /// similar to Python agent frameworks.
 ///
-/// # Example
+/// # Example - Multiple Servers
 ///
 /// ```rust,ignore
-/// let clients = McpClientBuilder::new()
+/// use machi::mcp::McpClientBuilder;
+///
+/// // Connect to multiple MCP servers and use with agent
+/// let mcp = McpClientBuilder::new()
 ///     .http("calculator", "http://localhost:8080")
 ///     .stdio("local_tools", "python", &["tools.py"])
+///     .connect()
+///     .await?;
+///
+/// let agent = client
+///     .agent(model)
+///     .mcp(mcp)
+///     .build();
+/// ```
+///
+/// # Example - Get Individual Clients
+///
+/// ```rust,ignore
+/// // Get named clients for more control
+/// let clients = McpClientBuilder::new()
+///     .http("math", "http://localhost:8080")
+///     .http("weather", "http://localhost:8081")
 ///     .connect_all()
 ///     .await?;
+///
+/// for (name, client) in &clients {
+///     println!("Server {}: {:?}", name, client.tool_names());
+/// }
 /// ```
 #[derive(Default)]
 pub struct McpClientBuilder {
@@ -290,19 +313,94 @@ impl McpClientBuilder {
         Ok(clients)
     }
 
-    /// Connects to all servers and collects all tools into a single client-like result.
-    pub async fn connect_and_merge(self) -> Result<(Vec<Tool>, Vec<ServerSink>), McpError> {
+    /// Connects to all servers and returns a merged client.
+    ///
+    /// This is the primary method for connecting to multiple MCP servers
+    /// and using them with an agent. Each tool retains its own server connection.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let mcp = McpClientBuilder::new()
+    ///     .http("math", "http://localhost:8080")
+    ///     .stdio("local", "python", &["server.py"])
+    ///     .connect()
+    ///     .await?;
+    ///
+    /// let agent = client.agent(model).mcp(mcp).build();
+    /// ```
+    pub async fn connect(self) -> Result<MergedMcpClients, McpError> {
         let clients = self.connect_all().await?;
+        Ok(MergedMcpClients::from_clients(clients))
+    }
+}
 
-        let mut all_tools = Vec::new();
-        let mut all_sinks = Vec::new();
+/// Merged MCP clients from multiple servers.
+///
+/// Created by [`McpClientBuilder::connect`]. Can be used directly with
+/// [`AgentBuilder::mcp`](crate::agent::AgentBuilder::mcp).
+pub struct MergedMcpClients {
+    tools: Vec<crate::mcp::McpTool>,
+    /// Keep handles alive to maintain connections.
+    #[allow(dead_code)]
+    handles: Vec<Arc<JoinHandle<()>>>,
+}
+
+/// Trait for types that can be converted to MCP tools.
+///
+/// This allows both [`McpClient`] and [`MergedMcpClients`] to be used
+/// with [`AgentBuilder::mcp`](crate::agent::AgentBuilder::mcp).
+pub trait IntoMcpTools {
+    /// Converts into a vector of MCP tools.
+    fn into_mcp_tools(self) -> Vec<crate::mcp::McpTool>;
+}
+
+impl IntoMcpTools for McpClient {
+    fn into_mcp_tools(self) -> Vec<crate::mcp::McpTool> {
+        let (tools, sink) = self.into_parts();
+        tools
+            .into_iter()
+            .map(|t| crate::mcp::McpTool::new(t, sink.clone()))
+            .collect()
+    }
+}
+
+impl IntoMcpTools for MergedMcpClients {
+    fn into_mcp_tools(self) -> Vec<crate::mcp::McpTool> {
+        self.into_tools()
+    }
+}
+
+impl MergedMcpClients {
+    /// Creates merged clients from a list of named clients.
+    fn from_clients(clients: Vec<(String, McpClient)>) -> Self {
+        let mut tools = Vec::new();
+        let mut handles = Vec::new();
 
         for (_, client) in clients {
-            let (tools, sink) = client.into_parts();
-            all_tools.extend(tools);
-            all_sinks.push(sink);
+            // Extract handle before consuming client
+            let handle = client._service_handle.clone();
+            let (client_tools, sink) = client.into_parts();
+            handles.push(handle);
+
+            for tool in client_tools {
+                tools.push(crate::mcp::McpTool::new(tool, sink.clone()));
+            }
         }
 
-        Ok((all_tools, all_sinks))
+        Self { tools, handles }
+    }
+
+    /// Returns the tool names from all connected servers.
+    #[must_use]
+    pub fn tool_names(&self) -> Vec<String> {
+        use crate::tool::ToolDyn;
+        self.tools.iter().map(|t| t.name()).collect()
+    }
+
+    /// Consumes and returns all tools.
+    #[must_use]
+    pub fn into_tools(self) -> Vec<crate::mcp::McpTool> {
+        self.tools
     }
 }

@@ -18,7 +18,7 @@ use crate::{
 
 #[cfg(feature = "rmcp")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-use crate::mcp::{McpClient, McpTool};
+use crate::mcp::{IntoMcpTools, McpTool};
 
 use super::Agent;
 
@@ -239,28 +239,63 @@ where
         }
     }
 
-    /// Adds tools from an MCP client, transitioning to `WithTools` state.
+    /// Adds tools from MCP client(s), transitioning to `WithTools` state.
     ///
-    /// This is a simplified API that accepts an [`McpClient`] directly,
-    /// eliminating the need to manually manage tools and sinks.
+    /// Accepts both single [`McpClient`] and [`MergedMcpClients`] (from [`McpClientBuilder`]).
     ///
-    /// # Example
+    /// # Example - Single Server
     ///
     /// ```rust,ignore
     /// use machi::mcp::McpClient;
     ///
-    /// let mcp = McpClient::connect("http://localhost:8080").await?;
+    /// let mcp = McpClient::http("http://localhost:8080").await?;
     /// let agent = client
     ///     .agent(model)
     ///     .preamble("You are a helpful assistant.")
-    ///     .mcp_tools(mcp)
+    ///     .mcp(mcp)
     ///     .build();
+    /// ```
+    ///
+    /// # Example - Multiple Servers
+    ///
+    /// ```rust,ignore
+    /// use machi::mcp::McpClientBuilder;
+    ///
+    /// let mcp = McpClientBuilder::new()
+    ///     .http("math", "http://localhost:8080")
+    ///     .stdio("local", "python", &["server.py"])
+    ///     .connect()
+    ///     .await?;
+    ///
+    /// let agent = client.agent(model).mcp(mcp).build();
     /// ```
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn mcp_tools(self, mcp_client: McpClient) -> AgentBuilder<M, WithTools> {
-        let (tools, sink) = mcp_client.into_parts();
-        self.rmcp_tools(tools, sink)
+    pub fn mcp(self, mcp: impl IntoMcpTools) -> AgentBuilder<M, WithTools> {
+        let mcp_tools = mcp.into_mcp_tools();
+        let static_tools: Vec<String> = mcp_tools.iter().map(|t| {
+            use crate::tool::ToolDyn;
+            t.name()
+        }).collect();
+
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            temperature: self.temperature,
+            tool_server_handle: None,
+            tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
+            static_tools,
+            dynamic_tools: vec![],
+            tools: ToolSet::from_tools(mcp_tools),
+            _marker: PhantomData,
+        }
     }
 
     /// Adds dynamic tools, transitioning to `WithTools` state.
@@ -351,27 +386,34 @@ where
         self
     }
 
-    /// Adds tools from an MCP client.
+    /// Adds tools from MCP client(s).
     ///
-    /// This is a simplified API that accepts an [`McpClient`] directly.
+    /// Accepts both single [`McpClient`] and [`MergedMcpClients`] (from [`McpClientBuilder`]).
     ///
     /// # Example
     ///
     /// ```rust,ignore
     /// use machi::mcp::McpClient;
     ///
-    /// let mcp = McpClient::connect("http://localhost:8080").await?;
+    /// let mcp = McpClient::http("http://localhost:8080").await?;
     /// let agent = client
     ///     .agent(model)
     ///     .tool(some_tool)
-    ///     .mcp_tools(mcp)  // Add more tools from MCP
+    ///     .mcp(mcp)  // Add more tools from MCP
     ///     .build();
     /// ```
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn mcp_tools(self, mcp_client: McpClient) -> Self {
-        let (tools, sink) = mcp_client.into_parts();
-        self.rmcp_tools(tools, sink)
+    pub fn mcp(mut self, mcp: impl IntoMcpTools) -> Self {
+        for tool in mcp.into_mcp_tools() {
+            let name = {
+                use crate::tool::ToolDyn;
+                tool.name()
+            };
+            self.static_tools.push(name);
+            self.tools.add_tool(tool);
+        }
+        self
     }
 
     /// Adds dynamic tools.

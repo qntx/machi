@@ -1,0 +1,4 @@
+{
+    "rust-analyzer.cargo.features": ["derive"],
+    "rust-analyzer.check.features": ["derive"]
+}

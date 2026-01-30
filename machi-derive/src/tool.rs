@@ -350,7 +350,7 @@ pub(crate) fn expand_machi_tool(args: ToolMacroArgs, input_fn: ItemFn) -> syn::R
             #call_impl
         }
 
-        pub static #static_name: #struct_name = #struct_name;
+        pub(crate) static #static_name: #struct_name = #struct_name;
     };
 
     Ok(expanded)

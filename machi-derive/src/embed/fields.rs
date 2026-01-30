@@ -4,7 +4,7 @@
 //! custom `#[embed(embed_with = "...")]` attributes.
 
 use quote::ToTokens;
-use syn::{meta::ParseNestedMeta, Attribute, DataStruct, ExprPath, Meta, parse_quote};
+use syn::{Attribute, DataStruct, ExprPath, Meta, meta::ParseNestedMeta, parse_quote};
 
 use super::EMBED_ATTR;
 

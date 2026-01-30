@@ -273,10 +273,13 @@ where
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn mcp(self, mcp: impl IntoMcpTools) -> AgentBuilder<M, WithTools> {
         let mcp_tools = mcp.into_mcp_tools();
-        let static_tools: Vec<String> = mcp_tools.iter().map(|t| {
-            use crate::tool::ToolDyn;
-            t.name()
-        }).collect();
+        let static_tools: Vec<String> = mcp_tools
+            .iter()
+            .map(|t| {
+                use crate::tool::ToolDyn;
+                t.name()
+            })
+            .collect();
 
         AgentBuilder {
             name: self.name,

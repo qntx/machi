@@ -80,5 +80,25 @@ reqwest-rustls = ["reqwest/rustls", "reqwest/charset", "reqwest/http2"]
 reqwest-middleware = ["dep:reqwest-middleware"]
 reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-rustls"]
 
+[[example]]
+name = "agent_with_mcp_tools"
+required-features = ["rmcp"]
+
+[[example]]
+name = "mcp_server"
+required-features = ["rmcp"]
+
+[[example]]
+name = "tools_macro"
+required-features = ["derive"]
+
+[[example]]
+name = "agent_with_tools_macro"
+required-features = ["derive"]
+
+[[example]]
+name = "agent_with_rag"
+required-features = ["derive"]
+
 [lints]
 workspace = true

@@ -1,14 +1,21 @@
+//! Implementation of the Tool trait for Agent.
+//!
+//! This module allows agents to be used as tools within other agents,
+//! enabling hierarchical agent workflows and sub-agent patterns.
+
 use crate::{
-    agent::Agent,
     completion::{CompletionModel, Prompt, PromptError, ToolDefinition},
     tool::Tool,
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
+use super::Agent;
+
+/// Arguments for calling an agent as a tool.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AgentToolArgs {
-    /// The prompt for the agent to call.
+    /// The prompt to send to the sub-agent.
     prompt: String,
 }
 
@@ -21,17 +28,15 @@ impl<M: CompletionModel> Tool for Agent<M> {
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         let description = format!(
-            "
-            Prompt a sub-agent to do a task for you.
-
-            Agent name: {name}
-            Agent description: {description}
-            Agent system prompt: {sysprompt}
-            ",
+            "Prompt a sub-agent to do a task for you.\n\n\
+             Agent name: {name}\n\
+             Agent description: {description}\n\
+             Agent system prompt: {sysprompt}",
             name = self.name(),
             description = self.description.clone().unwrap_or_default(),
             sysprompt = self.preamble.clone().unwrap_or_default()
         );
+
         ToolDefinition {
             name: <Self as Tool>::name(self),
             description,

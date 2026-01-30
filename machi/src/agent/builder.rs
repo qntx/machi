@@ -1,10 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
+//! Agent builder module providing a fluent API for constructing agents.
+//!
+//! This module uses the typestate pattern to provide compile-time guarantees
+//! about builder configuration while maintaining a clean API.
+
+use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 
 use tokio::sync::RwLock;
 
 use crate::{
-    completion::message::ToolChoice,
-    completion::{CompletionModel, Document},
+    completion::{CompletionModel, Document, message::ToolChoice},
     store::VectorStoreIndexDyn,
     tool::{
         Tool, ToolDyn, ToolSet,
@@ -18,61 +22,75 @@ use crate::tool::mcp::McpTool as RmcpTool;
 
 use super::Agent;
 
-/// A builder for creating an agent
+/// Marker type indicating no tools have been configured.
+pub struct NoTools;
+
+/// Marker type indicating tools have been configured via ToolSet.
+pub struct WithTools;
+
+/// A fluent builder for creating [`Agent`] instances.
+///
+/// The builder uses typestate pattern via the `T` parameter to track
+/// whether tools have been configured, enabling different methods
+/// based on the current state.
 ///
 /// # Example
-/// ```
-/// use crate::{providers::openai, agent::AgentBuilder};
+/// ```rust,ignore
+/// use machi::{providers::openai, agent::AgentBuilder};
 ///
 /// let openai = openai::Client::from_env();
+/// let model = openai.completion_model("gpt-4o");
 ///
-/// let gpt4o = openai.completion_model("gpt-4o");
-///
-/// // Configure the agent
-/// let agent = AgentBuilder::new(gpt4o)
-///     .preamble("System prompt")
-///     .context("Context document 1")
-///     .context("Context document 2")
-///     .tool(tool1)
-///     .tool(tool2)
+/// let agent = AgentBuilder::new(model)
+///     .preamble("You are a helpful assistant.")
+///     .context("Important context document")
+///     .tool(my_tool)
 ///     .temperature(0.8)
-///     .additional_params(json!({"foo": "bar"}))
 ///     .build();
 /// ```
-pub struct AgentBuilder<M>
+pub struct AgentBuilder<M, T = NoTools>
 where
     M: CompletionModel,
 {
-    /// Name of the agent used for logging and debugging
+    /// Name of the agent for logging and debugging.
     name: Option<String>,
-    /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
+    /// Agent description for workflows and documentation.
     description: Option<String>,
-    /// Completion model (e.g.: `OpenAI`'s gpt-3.5-turbo-1106, Cohere's command-r)
+    /// The completion model to use.
     model: M,
-    /// System prompt
+    /// System prompt.
     preamble: Option<String>,
-    /// Context documents always available to the agent
+    /// Static context documents.
     static_context: Vec<Document>,
-    /// Additional parameters to be passed to the model
+    /// Additional model parameters.
     additional_params: Option<serde_json::Value>,
-    /// Maximum number of tokens for the completion
+    /// Maximum tokens for completion.
     max_tokens: Option<u64>,
-    /// List of vector store, with the sample number
+    /// Dynamic context stores with sample counts.
     dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    /// Temperature of the model
+    /// Model temperature.
     temperature: Option<f64>,
-    /// Tool server handle
+    /// Tool server handle (for NoTools state).
     tool_server_handle: Option<ToolServerHandle>,
-    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
+    /// Tool choice configuration.
     tool_choice: Option<ToolChoice>,
-    /// Default maximum depth for multi-turn agent calls
+    /// Default max depth for multi-turn.
     default_max_depth: Option<usize>,
+    /// Static tool names (for WithTools state).
+    static_tools: Vec<String>,
+    /// Dynamic tools stores (for WithTools state).
+    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    /// Tool implementations (for WithTools state).
+    tools: ToolSet,
+    /// Marker for typestate.
+    _marker: PhantomData<T>,
 }
 
-impl<M> AgentBuilder<M>
+impl<M> AgentBuilder<M, NoTools>
 where
     M: CompletionModel,
 {
+    /// Creates a new builder with the given completion model.
     pub fn new(model: M) -> Self {
         Self {
             name: None,
@@ -87,248 +105,171 @@ where
             tool_server_handle: None,
             tool_choice: None,
             default_max_depth: None,
-        }
-    }
-
-    /// Set the name of the agent
-    pub fn name(mut self, name: &str) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Set the description of the agent
-    pub fn description(mut self, description: &str) -> Self {
-        self.description = Some(description.into());
-        self
-    }
-
-    /// Set the system prompt
-    pub fn preamble(mut self, preamble: &str) -> Self {
-        self.preamble = Some(preamble.into());
-        self
-    }
-
-    /// Remove the system prompt
-    pub fn without_preamble(mut self) -> Self {
-        self.preamble = None;
-        self
-    }
-
-    /// Append to the preamble of the agent
-    pub fn append_preamble(mut self, doc: &str) -> Self {
-        self.preamble = Some(format!("{}\n{}", self.preamble.unwrap_or_default(), doc));
-        self
-    }
-
-    /// Add a static context document to the agent
-    pub fn context(mut self, doc: &str) -> Self {
-        self.static_context.push(Document {
-            id: format!("static_doc_{}", self.static_context.len()),
-            text: doc.into(),
-            additional_props: HashMap::new(),
-        });
-        self
-    }
-
-    /// Add a static tool to the agent
-    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilderSimple<M> {
-        let toolname = tool.name();
-        let tools = ToolSet::from_tools(vec![tool]);
-        let static_tools = vec![toolname];
-
-        AgentBuilderSimple {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            static_tools,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            dynamic_context: vec![],
+            static_tools: vec![],
             dynamic_tools: vec![],
-            temperature: self.temperature,
-            tools,
-            tool_choice: self.tool_choice,
-            default_max_depth: self.default_max_depth,
+            tools: ToolSet::default(),
+            _marker: PhantomData,
         }
     }
 
-    /// Add a vector of boxed static tools to the agent
-    /// This is useful when you need to dynamically add static tools to the agent
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilderSimple<M> {
-        let static_tools = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
-
-        AgentBuilderSimple {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            static_tools,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            dynamic_context: vec![],
-            dynamic_tools: vec![],
-            temperature: self.temperature,
-            tools,
-            tool_choice: self.tool_choice,
-            default_max_depth: self.default_max_depth,
-        }
-    }
-
+    /// Sets an existing tool server handle.
     pub fn tool_server_handle(mut self, handle: ToolServerHandle) -> Self {
         self.tool_server_handle = Some(handle);
         self
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent
+    /// Adds a tool to the agent, transitioning to WithTools state.
+    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithTools> {
+        let toolname = tool.name();
+        let tools = ToolSet::from_tools(vec![tool]);
+
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            temperature: self.temperature,
+            tool_server_handle: None,
+            tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
+            static_tools: vec![toolname],
+            dynamic_tools: vec![],
+            tools,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Adds multiple boxed tools, transitioning to WithTools state.
+    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithTools> {
+        let static_tools = tools.iter().map(|t| t.name()).collect();
+        let tools = ToolSet::from_tools_boxed(tools);
+
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            temperature: self.temperature,
+            tool_server_handle: None,
+            tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
+            static_tools,
+            dynamic_tools: vec![],
+            tools,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Adds an MCP tool from rmcp, transitioning to WithTools state.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tool(
         self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilderSimple<M> {
+    ) -> AgentBuilder<M, WithTools> {
         let toolname = tool.name.clone().to_string();
         let tools = ToolSet::from_tools(vec![RmcpTool::from_mcp_server(tool, client)]);
-        let static_tools = vec![toolname];
 
-        AgentBuilderSimple {
+        AgentBuilder {
             name: self.name,
             description: self.description,
             model: self.model,
             preamble: self.preamble,
             static_context: self.static_context,
-            static_tools,
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: vec![],
-            dynamic_tools: vec![],
+            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
-            tools,
+            tool_server_handle: None,
             tool_choice: self.tool_choice,
             default_max_depth: self.default_max_depth,
+            static_tools: vec![toolname],
+            dynamic_tools: vec![],
+            tools,
+            _marker: PhantomData,
         }
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent
+    /// Adds multiple MCP tools from rmcp, transitioning to WithTools state.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
         self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilderSimple<M> {
-        let (static_tools, tools) = tools.into_iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut toolnames, mut toolset), tool| {
-                let tool_name = tool.name.to_string();
-                let tool = RmcpTool::from_mcp_server(tool, client.clone());
-                toolnames.push(tool_name);
-                toolset.push(tool);
-                (toolnames, toolset)
-            },
-        );
+    ) -> AgentBuilder<M, WithTools> {
+        let (static_tools, tool_vec) =
+            tools
+                .into_iter()
+                .fold((Vec::new(), Vec::new()), |(mut names, mut set), tool| {
+                    let name = tool.name.to_string();
+                    let mcp_tool = RmcpTool::from_mcp_server(tool, client.clone());
+                    names.push(name);
+                    set.push(mcp_tool);
+                    (names, set)
+                });
 
-        let tools = ToolSet::from_tools(tools);
-
-        AgentBuilderSimple {
+        AgentBuilder {
             name: self.name,
             description: self.description,
             model: self.model,
             preamble: self.preamble,
             static_context: self.static_context,
-            static_tools,
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: vec![],
-            dynamic_tools: vec![],
+            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
-            tools,
+            tool_server_handle: None,
             tool_choice: self.tool_choice,
             default_max_depth: self.default_max_depth,
+            static_tools,
+            dynamic_tools: vec![],
+            tools: ToolSet::from_tools(tool_vec),
+            _marker: PhantomData,
         }
     }
 
-    /// Add some dynamic context to the agent. On each prompt, `sample` documents from the
-    /// dynamic context will be inserted in the request.
-    pub fn dynamic_context(
-        mut self,
-        sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
-    ) -> Self {
-        self.dynamic_context
-            .push((sample, Box::new(dynamic_context)));
-        self
-    }
-
-    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.tool_choice = Some(tool_choice);
-        self
-    }
-
-    /// Set the default maximum depth that an agent will use for multi-turn.
-    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
-        self.default_max_depth = Some(default_max_depth);
-        self
-    }
-
-    /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
-    /// dynamic toolset will be inserted in the request.
+    /// Adds dynamic tools, transitioning to WithTools state.
     pub fn dynamic_tools(
         self,
         sample: usize,
         dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
-    ) -> AgentBuilderSimple<M> {
-        let thing: Box<dyn VectorStoreIndexDyn + Send + Sync + 'static> = Box::new(dynamic_tools);
-        let dynamic_tools = vec![(sample, thing)];
-
-        AgentBuilderSimple {
+    ) -> AgentBuilder<M, WithTools> {
+        AgentBuilder {
             name: self.name,
             description: self.description,
             model: self.model,
             preamble: self.preamble,
             static_context: self.static_context,
-            static_tools: vec![],
             additional_params: self.additional_params,
             max_tokens: self.max_tokens,
-            dynamic_context: vec![],
-            dynamic_tools,
+            dynamic_context: self.dynamic_context,
             temperature: self.temperature,
-            tools: toolset,
+            tool_server_handle: None,
             tool_choice: self.tool_choice,
             default_max_depth: self.default_max_depth,
+            static_tools: vec![],
+            dynamic_tools: vec![(sample, Box::new(dynamic_tools))],
+            tools: toolset,
+            _marker: PhantomData,
         }
     }
 
-    /// Set the temperature of the model
-    pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Set the maximum number of tokens for the completion
-    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-
-    /// Set additional parameters to be passed to the model
-    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
-        self.additional_params = Some(params);
-        self
-    }
-
-    /// Build the agent
+    /// Builds the agent without tools.
     pub fn build(self) -> Agent<M> {
-        let tool_server_handle = if let Some(handle) = self.tool_server_handle {
-            handle
-        } else {
-            ToolServer::new().run()
-        };
+        let tool_server_handle = self
+            .tool_server_handle
+            .unwrap_or_else(|| ToolServer::new().run());
 
         Agent {
             name: self.name,
@@ -347,125 +288,11 @@ where
     }
 }
 
-/// A fluent builder variation of `AgentBuilder`. Allows adding tools directly to the builder rather than using the tool server handle.
-///
-/// # Example
-/// ```
-/// use crate::{providers::openai, agent::AgentBuilder};
-///
-/// let openai = openai::Client::from_env();
-///
-/// let gpt4o = openai.completion_model("gpt-4o");
-///
-/// // Configure the agent
-/// let agent = AgentBuilder::new(gpt4o)
-///     .preamble("System prompt")
-///     .context("Context document 1")
-///     .context("Context document 2")
-///     .tool(tool1)
-///     .tool(tool2)
-///     .temperature(0.8)
-///     .additional_params(json!({"foo": "bar"}))
-///     .build();
-/// ```
-pub struct AgentBuilderSimple<M>
+impl<M> AgentBuilder<M, WithTools>
 where
     M: CompletionModel,
 {
-    /// Name of the agent used for logging and debugging
-    name: Option<String>,
-    /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
-    description: Option<String>,
-    /// Completion model (e.g.: `OpenAI`'s gpt-3.5-turbo-1106, Cohere's command-r)
-    model: M,
-    /// System prompt
-    preamble: Option<String>,
-    /// Context documents always available to the agent
-    static_context: Vec<Document>,
-    /// Tools that are always available to the agent (by name)
-    static_tools: Vec<String>,
-    /// Additional parameters to be passed to the model
-    additional_params: Option<serde_json::Value>,
-    /// Maximum number of tokens for the completion
-    max_tokens: Option<u64>,
-    /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    /// Dynamic tools
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    /// Temperature of the model
-    temperature: Option<f64>,
-    /// Actual tool implementations
-    tools: ToolSet,
-    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
-    tool_choice: Option<ToolChoice>,
-    /// Default maximum depth for multi-turn agent calls
-    default_max_depth: Option<usize>,
-}
-
-impl<M> AgentBuilderSimple<M>
-where
-    M: CompletionModel,
-{
-    pub fn new(model: M) -> Self {
-        Self {
-            name: None,
-            description: None,
-            model,
-            preamble: None,
-            static_context: vec![],
-            static_tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            additional_params: None,
-            dynamic_context: vec![],
-            dynamic_tools: vec![],
-            tools: ToolSet::default(),
-            tool_choice: None,
-            default_max_depth: None,
-        }
-    }
-
-    /// Set the name of the agent
-    pub fn name(mut self, name: &str) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Set the description of the agent
-    pub fn description(mut self, description: &str) -> Self {
-        self.description = Some(description.into());
-        self
-    }
-
-    /// Set the system prompt
-    pub fn preamble(mut self, preamble: &str) -> Self {
-        self.preamble = Some(preamble.into());
-        self
-    }
-
-    /// Remove the system prompt
-    pub fn without_preamble(mut self) -> Self {
-        self.preamble = None;
-        self
-    }
-
-    /// Append to the preamble of the agent
-    pub fn append_preamble(mut self, doc: &str) -> Self {
-        self.preamble = Some(format!("{}\n{}", self.preamble.unwrap_or_default(), doc));
-        self
-    }
-
-    /// Add a static context document to the agent
-    pub fn context(mut self, doc: &str) -> Self {
-        self.static_context.push(Document {
-            id: format!("static_doc_{}", self.static_context.len()),
-            text: doc.into(),
-            additional_props: HashMap::new(),
-        });
-        self
-    }
-
-    /// Add a static tool to the agent
+    /// Adds another tool to the agent.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.tools.add_tool(tool);
@@ -473,15 +300,16 @@ where
         self
     }
 
+    /// Adds multiple boxed tools.
     pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
-        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
-        let tools = ToolSet::from_tools_boxed(tools);
-        self.tools.add_tools(tools);
-        self.static_tools.extend(toolnames);
+        let names: Vec<String> = tools.iter().map(|t| t.name()).collect();
+        let toolset = ToolSet::from_tools_boxed(tools);
+        self.tools.add_tools(toolset);
+        self.static_tools.extend(names);
         self
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent
+    /// Adds multiple MCP tools from rmcp.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
@@ -490,40 +318,15 @@ where
         client: rmcp::service::ServerSink,
     ) -> Self {
         for tool in tools {
-            let tool_name = tool.name.to_string();
-            let tool = RmcpTool::from_mcp_server(tool, client.clone());
-            self.static_tools.push(tool_name);
-            self.tools.add_tool(tool);
+            let name = tool.name.to_string();
+            let mcp_tool = RmcpTool::from_mcp_server(tool, client.clone());
+            self.static_tools.push(name);
+            self.tools.add_tool(mcp_tool);
         }
-
         self
     }
 
-    /// Add some dynamic context to the agent. On each prompt, `sample` documents from the
-    /// dynamic context will be inserted in the request.
-    pub fn dynamic_context(
-        mut self,
-        sample: usize,
-        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
-    ) -> Self {
-        self.dynamic_context
-            .push((sample, Box::new(dynamic_context)));
-        self
-    }
-
-    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.tool_choice = Some(tool_choice);
-        self
-    }
-
-    /// Set the default maximum depth that an agent will use for multi-turn.
-    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
-        self.default_max_depth = Some(default_max_depth);
-        self
-    }
-
-    /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
-    /// dynamic toolset will be inserted in the request.
+    /// Adds dynamic tools.
     pub fn dynamic_tools(
         mut self,
         sample: usize,
@@ -535,25 +338,7 @@ where
         self
     }
 
-    /// Set the temperature of the model
-    pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Set the maximum number of tokens for the completion
-    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-
-    /// Set additional parameters to be passed to the model
-    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
-        self.additional_params = Some(params);
-        self
-    }
-
-    /// Build the agent
+    /// Builds the agent with configured tools.
     pub fn build(self) -> Agent<M> {
         let tool_server_handle = ToolServer::new()
             .static_tool_names(self.static_tools)
@@ -577,3 +362,93 @@ where
         }
     }
 }
+
+/// Common methods available in all builder states.
+impl<M, T> AgentBuilder<M, T>
+where
+    M: CompletionModel,
+{
+    /// Sets the agent name.
+    pub fn name(mut self, name: &str) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Sets the agent description.
+    pub fn description(mut self, description: &str) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Sets the system prompt.
+    pub fn preamble(mut self, preamble: &str) -> Self {
+        self.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Removes the system prompt.
+    pub fn without_preamble(mut self) -> Self {
+        self.preamble = None;
+        self
+    }
+
+    /// Appends to the existing preamble.
+    pub fn append_preamble(mut self, doc: &str) -> Self {
+        self.preamble = Some(format!("{}\n{}", self.preamble.unwrap_or_default(), doc));
+        self
+    }
+
+    /// Adds a static context document.
+    pub fn context(mut self, doc: &str) -> Self {
+        self.static_context.push(Document {
+            id: format!("static_doc_{}", self.static_context.len()),
+            text: doc.into(),
+            additional_props: HashMap::new(),
+        });
+        self
+    }
+
+    /// Adds dynamic context with a sample count.
+    pub fn dynamic_context(
+        mut self,
+        sample: usize,
+        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
+    ) -> Self {
+        self.dynamic_context
+            .push((sample, Box::new(dynamic_context)));
+        self
+    }
+
+    /// Sets the tool choice configuration.
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Sets the default max depth for multi-turn conversations.
+    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
+        self.default_max_depth = Some(default_max_depth);
+        self
+    }
+
+    /// Sets the model temperature.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Sets the maximum tokens for completion.
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Sets additional model parameters.
+    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+        self.additional_params = Some(params);
+        self
+    }
+}
+
+/// Type alias for backwards compatibility.
+pub type AgentBuilderSimple<M> = AgentBuilder<M, WithTools>;

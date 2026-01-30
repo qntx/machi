@@ -10,7 +10,7 @@
 
 use super::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction, ToolResult};
 use crate::agent::Agent;
-use crate::agent::prompt_request::streaming::StreamingPromptRequest;
+use crate::agent::request::streaming::StreamingPromptRequest;
 use crate::client::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,

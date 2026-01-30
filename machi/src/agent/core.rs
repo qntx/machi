@@ -1,22 +1,30 @@
-use super::prompt_request::{self, PromptRequest};
+//! Core Agent structure and trait implementations.
+//!
+//! This module contains the main [`Agent`] struct which represents an LLM agent
+//! that combines a completion model with a system prompt, context documents, and tools.
+
+use std::{collections::HashMap, sync::Arc};
+
+use futures::{StreamExt, TryStreamExt, stream};
+use tokio::sync::RwLock;
+
 use crate::{
-    agent::prompt_request::streaming::StreamingPromptRequest,
-    completion::message::ToolChoice,
-    completion::streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
         GetTokenUsage, Message, Prompt, PromptError,
+        message::ToolChoice,
+        streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
     },
     core::wasm_compat::WasmCompatSend,
     store::{VectorStoreError, request::VectorSearchRequest},
     tool::server::ToolServerHandle,
 };
-use futures::{StreamExt, TryStreamExt, stream};
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
+
+use super::request::{PromptRequest, StreamingPromptRequest, prompt::Standard};
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
+/// Type alias for dynamic context stores.
 pub type DynamicContextStore = Arc<
     RwLock<
         Vec<(
@@ -26,13 +34,18 @@ pub type DynamicContextStore = Arc<
     >,
 >;
 
-/// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
-/// (i.e.: system prompt) and a static set of context documents and tools.
-/// All context documents and tools are always provided to the agent when prompted.
+/// An LLM agent that combines a completion model with configuration and tools.
+///
+/// An agent encapsulates:
+/// - A completion model (e.g., GPT-4, Claude)
+/// - A system prompt (preamble)
+/// - Static and dynamic context documents
+/// - Tools that the agent can use
+/// - Model parameters (temperature, max_tokens, etc.)
 ///
 /// # Example
-/// ```
-/// use crate::{completion::Prompt, providers::openai};
+/// ```rust,ignore
+/// use machi::{completion::Prompt, providers::openai};
 ///
 /// let openai = openai::Client::from_env();
 ///
@@ -52,28 +65,29 @@ pub struct Agent<M>
 where
     M: CompletionModel,
 {
-    /// Name of the agent used for logging and debugging
+    /// Name of the agent used for logging and debugging.
     pub name: Option<String>,
-    /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
+    /// Agent description. Useful for sub-agents in workflows.
     pub description: Option<String>,
-    /// Completion model (e.g.: `OpenAI`'s gpt-3.5-turbo-1106, Cohere's command-r)
+    /// The completion model to use.
     pub model: Arc<M>,
-    /// System prompt
+    /// System prompt (preamble).
     pub preamble: Option<String>,
-    /// Context documents always available to the agent
+    /// Static context documents always available to the agent.
     pub static_context: Vec<Document>,
-    /// Temperature of the model
+    /// Temperature setting for the model.
     pub temperature: Option<f64>,
-    /// Maximum number of tokens for the completion
+    /// Maximum number of tokens for completions.
     pub max_tokens: Option<u64>,
-    /// Additional parameters to be passed to the model
+    /// Additional model-specific parameters.
     pub additional_params: Option<serde_json::Value>,
+    /// Handle to the tool server for tool execution.
     pub tool_server_handle: ToolServerHandle,
-    /// List of vector store, with the sample number
+    /// Dynamic context stores with sample counts.
     pub dynamic_context: DynamicContextStore,
-    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
+    /// Tool choice configuration.
     pub tool_choice: Option<ToolChoice>,
-    /// Default maximum depth for recursive agent calls
+    /// Default maximum depth for multi-turn conversations.
     pub default_max_depth: Option<usize>,
 }
 
@@ -81,7 +95,7 @@ impl<M> Agent<M>
 where
     M: CompletionModel,
 {
-    /// Returns the name of the agent.
+    /// Returns the name of the agent, or a default if not set.
     pub(crate) fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
@@ -98,16 +112,13 @@ where
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
         let prompt = prompt.into();
 
-        // Find the latest message in the chat history that contains RAG text
-        let rag_text = prompt.rag_text();
-        let rag_text = rag_text.or_else(|| {
-            chat_history
-                .iter()
-                .rev()
-                .find_map(super::super::completion::message::Message::rag_text)
-        });
+        // Find the latest message containing RAG text
+        let rag_text = prompt
+            .rag_text()
+            .or_else(|| chat_history.iter().rev().find_map(Message::rag_text));
 
-        let completion_request = self
+        // Build the base completion request
+        let request = self
             .model
             .completion_request(prompt)
             .messages(chat_history)
@@ -115,32 +126,37 @@ where
             .max_tokens_opt(self.max_tokens)
             .additional_params_opt(self.additional_params.clone())
             .documents(self.static_context.clone());
-        let completion_request = if let Some(preamble) = &self.preamble {
-            completion_request.preamble(preamble.to_owned())
-        } else {
-            completion_request
-        };
-        let completion_request = if let Some(tool_choice) = &self.tool_choice {
-            completion_request.tool_choice(tool_choice.clone())
-        } else {
-            completion_request
+
+        // Add preamble if present
+        let request = match &self.preamble {
+            Some(preamble) => request.preamble(preamble.to_owned()),
+            None => request,
         };
 
-        // If the agent has RAG text, we need to fetch the dynamic context and tools
-        let agent = if let Some(text) = &rag_text {
+        // Add tool choice if present
+        let request = match &self.tool_choice {
+            Some(tool_choice) => request.tool_choice(tool_choice.clone()),
+            None => request,
+        };
+
+        // Fetch dynamic context and tools if RAG text is available
+        let request = if let Some(text) = &rag_text {
             let dynamic_context = stream::iter(self.dynamic_context.read().await.iter())
                 .then(|(num_sample, index)| async {
-                    let req = VectorSearchRequest::builder().query(text).samples(*num_sample as u64).build().expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                    let req = VectorSearchRequest::builder()
+                        .query(text)
+                        .samples(*num_sample as u64)
+                        .build()
+                        .expect("VectorSearchRequest build should not fail");
+
                     Ok::<_, VectorStoreError>(
                         index
                             .top_n(req)
                             .await?
                             .into_iter()
                             .map(|(_, id, doc)| {
-                                // Pretty print the document if possible for better readability
                                 let text = serde_json::to_string_pretty(&doc)
                                     .unwrap_or_else(|_| doc.to_string());
-
                                 Document {
                                     id,
                                     text,
@@ -165,9 +181,7 @@ where
                     CompletionError::RequestError("Failed to get tool definitions".into())
                 })?;
 
-            completion_request
-                .documents(dynamic_context)
-                .tools(tooldefs)
+            request.documents(dynamic_context).tools(tooldefs)
         } else {
             let tooldefs = self
                 .tool_server_handle
@@ -177,19 +191,12 @@ where
                     CompletionError::RequestError("Failed to get tool definitions".into())
                 })?;
 
-            completion_request.tools(tooldefs)
+            request.tools(tooldefs)
         };
 
-        Ok(agent)
+        Ok(request)
     }
 }
-
-// Here, we need to ensure that usage of `.prompt` on agent uses these redefinitions on the opaque
-//  `Prompt` trait so that when `.prompt` is used at the call-site, it'll use the more specific
-//  `PromptRequest` implementation for `Agent`, making the builder's usage fluent.
-//
-// References:
-//  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
 
 #[allow(refining_impl_trait)]
 impl<M> Prompt for Agent<M>
@@ -199,7 +206,7 @@ where
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<'_, prompt_request::Standard, M, ()> {
+    ) -> PromptRequest<'_, Standard, M, ()> {
         PromptRequest::new(self, prompt)
     }
 }
@@ -213,7 +220,7 @@ where
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<'_, prompt_request::Standard, M, ()> {
+    ) -> PromptRequest<'_, Standard, M, ()> {
         PromptRequest::new(*self, prompt)
     }
 }
@@ -244,8 +251,6 @@ where
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
-        // Reuse the existing completion implementation to build the request
-        // This ensures streaming and non-streaming use the same request building logic
         self.completion(prompt, chat_history).await
     }
 }

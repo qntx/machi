@@ -181,9 +181,10 @@ impl MemoryStep for ActionStep {
 
         // Add model output
         if let Some(output) = &self.model_output
-            && !summary_mode {
-                messages.push(ChatMessage::assistant(output.trim()));
-            }
+            && !summary_mode
+        {
+            messages.push(ChatMessage::assistant(output.trim()));
+        }
 
         // Add tool calls
         if let Some(tool_calls) = &self.tool_calls {
@@ -348,9 +349,10 @@ impl AgentMemory {
                     total += usage;
                 }
             } else if let Some(planning) = step.as_any().downcast_ref::<PlanningStep>()
-                && let Some(usage) = planning.token_usage {
-                    total += usage;
-                }
+                && let Some(usage) = planning.token_usage
+            {
+                total += usage;
+            }
         }
         total
     }

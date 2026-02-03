@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn test_callback_manager() {
         let counter = Arc::new(AtomicUsize::new(0));
-        let counter_clone = counter.clone();
+        let counter_clone = Arc::clone(&counter);
 
         let mut manager = CallbackManager::new();
         manager.add(move |_| {

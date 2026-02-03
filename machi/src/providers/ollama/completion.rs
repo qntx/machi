@@ -1,4 +1,14 @@
-//! Ollama Chat API implementation.
+//! Ollama Chat Completions API implementation.
+
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::missing_fields_in_debug,
+    clippy::match_same_arms,
+    clippy::unused_self,
+    clippy::unnecessary_wraps,
+    clippy::unwrap_used,
+    clippy::unnecessary_filter_map
+)]
 
 use super::client::OllamaClient;
 use super::streaming::StreamingResponse;
@@ -98,9 +108,10 @@ impl CompletionModel {
 
                 // Tool response requires tool_name field
                 if msg.role == MessageRole::ToolResponse
-                    && let Some(tool_call_id) = &msg.tool_call_id {
-                        obj["tool_name"] = serde_json::json!(tool_call_id);
-                    }
+                    && let Some(tool_call_id) = &msg.tool_call_id
+                {
+                    obj["tool_name"] = serde_json::json!(tool_call_id);
+                }
 
                 Some(obj)
             })
@@ -128,9 +139,10 @@ impl CompletionModel {
         }
 
         if let Some(stop) = &options.stop_sequences
-            && !stop.is_empty() {
-                opts.insert("stop".to_string(), serde_json::json!(stop));
-            }
+            && !stop.is_empty()
+        {
+            opts.insert("stop".to_string(), serde_json::json!(stop));
+        }
 
         if !opts.is_empty() {
             body["options"] = Value::Object(opts);
@@ -143,22 +155,23 @@ impl CompletionModel {
 
         // Tools
         if let Some(tools) = &options.tools
-            && !tools.is_empty() {
-                let tool_defs: Vec<Value> = tools
-                    .iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "type": "function",
-                            "function": {
-                                "name": t.name,
-                                "description": t.description,
-                                "parameters": t.parameters
-                            }
-                        })
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters
+                        }
                     })
-                    .collect();
-                body["tools"] = serde_json::json!(tool_defs);
-            }
+                })
+                .collect();
+            body["tools"] = serde_json::json!(tool_defs);
+        }
 
         body
     }

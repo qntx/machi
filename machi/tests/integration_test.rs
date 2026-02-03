@@ -1,5 +1,7 @@
 //! Integration tests for machi framework.
 
+#![allow(clippy::unwrap_used, clippy::panic, clippy::clone_on_ref_ptr)]
+
 use async_trait::async_trait;
 use machi::prelude::*;
 use serde::{Deserialize, Serialize};

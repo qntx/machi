@@ -146,7 +146,7 @@ Think step by step about what you need to do to accomplish the task.",
     }
 
     /// Perform a single step.
-    async fn step(&mut self, action_step: &mut ActionStep) -> Result<Option<Value>> {
+    async fn step(&self, action_step: &mut ActionStep) -> Result<Option<Value>> {
         // Build messages from memory
         let messages = self.memory.to_messages(false);
         action_step.model_input_messages = Some(messages.clone());
@@ -550,7 +550,7 @@ Code:
     }
 
     /// Execute a step.
-    async fn step(&mut self, action_step: &mut ActionStep) -> Result<Option<Value>> {
+    async fn step(&self, action_step: &mut ActionStep) -> Result<Option<Value>> {
         let messages = self.memory.to_messages(false);
         action_step.model_input_messages = Some(messages.clone());
 
@@ -574,10 +574,11 @@ Code:
                     .ok()
                     .unwrap();
                 if let Some(captures) = answer_pattern.captures(&code)
-                    && let Some(answer) = captures.get(1) {
-                        action_step.is_final_answer = true;
-                        return Ok(Some(Value::String(answer.as_str().to_string())));
-                    }
+                    && let Some(answer) = captures.get(1)
+                {
+                    action_step.is_final_answer = true;
+                    return Ok(Some(Value::String(answer.as_str().to_string())));
+                }
             }
 
             // For now, just record the code as observation

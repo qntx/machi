@@ -1,5 +1,7 @@
 //! Ollama streaming response handling.
 
+#![allow(clippy::unused_self)]
+
 use crate::error::AgentError;
 use crate::message::{
     ChatMessageStreamDelta, ChatMessageToolCallFunction, ChatMessageToolCallStreamDelta,
@@ -126,7 +128,7 @@ where
                     if let Ok(text) = std::str::from_utf8(&bytes) {
                         self.buffer.push_str(text);
                     }
-                    continue;
+                    // Loop continues automatically
                 }
                 Poll::Ready(Some(Err(e))) => {
                     return Poll::Ready(Some(Err(AgentError::from(e))));
@@ -192,6 +194,7 @@ struct StreamFunction {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

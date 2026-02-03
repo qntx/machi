@@ -7,6 +7,7 @@ use serde_json::Value;
 
 /// Tool for visiting a webpage and extracting its content as text.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct VisitWebpageTool {
     /// Maximum output length in characters.
     pub max_output_length: usize,

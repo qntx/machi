@@ -10,6 +10,7 @@ use std::fmt;
 
 /// Error type for tool execution failures.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ToolError {
     /// Error during tool execution.
     ExecutionError(String),
@@ -57,6 +58,7 @@ impl From<serde_json::Error> for ToolError {
 
 /// Definition of a tool for LLM function calling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ToolDefinition {
     /// Name of the tool.
     pub name: String,
@@ -229,6 +231,7 @@ where
 /// A collection of tools that can be used by an agent.
 #[derive(Default)]
 pub struct ToolBox {
+    /// Map of tool names to tool instances.
     tools: std::collections::HashMap<String, BoxedTool>,
 }
 
@@ -289,6 +292,11 @@ impl ToolBox {
     }
 
     /// Call a tool by name with JSON arguments.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ToolError::NotFound` if the tool doesn't exist, or propagates
+    /// any error from the tool execution.
     pub async fn call(&self, name: &str, args: Value) -> Result<Value, ToolError> {
         let tool = self
             .tools

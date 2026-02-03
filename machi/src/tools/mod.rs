@@ -16,7 +16,7 @@ pub use web_search::{DuckDuckGoSearchTool, WebSearchTool};
 use crate::tool::BoxedTool;
 
 /// Get a map of all default tools.
-#[must_use] 
+#[must_use]
 pub fn default_tools() -> Vec<BoxedTool> {
     vec![Box::new(FinalAnswerTool)]
 }

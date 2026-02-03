@@ -1,5 +1,16 @@
 //! `OpenAI` Chat Completions API implementation.
 
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::or_fun_call,
+    clippy::default_trait_access,
+    clippy::option_if_let_else,
+    clippy::unused_self,
+    clippy::unwrap_used,
+    clippy::missing_fields_in_debug,
+    clippy::match_same_arms
+)]
+
 use super::client::OpenAIClient;
 use super::streaming::StreamingResponse;
 use crate::error::AgentError;
@@ -80,17 +91,20 @@ impl CompletionModel {
 
         // Stop sequences (only if model supports it)
         if let Some(stop) = &options.stop_sequences
-            && !stop.is_empty() && self.supports_stop_parameter() {
-                body["stop"] = serde_json::json!(stop);
-            }
+            && !stop.is_empty()
+            && self.supports_stop_parameter()
+        {
+            body["stop"] = serde_json::json!(stop);
+        }
 
         // Tools
         if let Some(tools) = &options.tools
-            && !tools.is_empty() {
-                let tool_defs: Vec<Value> =
-                    tools.iter().map(ToolDefinition::to_openai_format).collect();
-                body["tools"] = serde_json::json!(tool_defs);
-            }
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<Value> =
+                tools.iter().map(ToolDefinition::to_openai_format).collect();
+            body["tools"] = serde_json::json!(tool_defs);
+        }
 
         // Response format
         if let Some(format) = &options.response_format {
@@ -287,6 +301,7 @@ impl Model for CompletionModel {
 
 /// `OpenAI` API error response.
 #[derive(Debug, Deserialize)]
+#[non_exhaustive]
 pub struct ApiErrorResponse {
     /// Detailed error information.
     pub error: ApiError,
@@ -294,6 +309,7 @@ pub struct ApiErrorResponse {
 
 /// `OpenAI` API error details.
 #[derive(Debug, Deserialize)]
+#[non_exhaustive]
 pub struct ApiError {
     /// Human-readable error message.
     pub message: String,

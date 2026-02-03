@@ -1,5 +1,7 @@
 //! User input tool for interactive agents.
 
+#![allow(clippy::print_stdout, clippy::exhaustive_structs)]
+
 use crate::tool::{Tool, ToolError};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

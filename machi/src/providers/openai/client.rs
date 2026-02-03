@@ -1,5 +1,7 @@
 //! `OpenAI` API client implementation.
 
+#![allow(clippy::missing_fields_in_debug, clippy::missing_panics_doc)]
+
 use super::completion::CompletionModel;
 use crate::providers::common::FromEnv;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};

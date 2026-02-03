@@ -1,5 +1,7 @@
 //! `OpenAI` streaming response handling.
 
+#![allow(clippy::unused_self)]
+
 use crate::error::AgentError;
 use crate::message::{
     ChatMessageStreamDelta, ChatMessageToolCallFunction, ChatMessageToolCallStreamDelta,
@@ -13,7 +15,9 @@ use std::task::{Context, Poll};
 
 /// Streaming response parser for `OpenAI`'s SSE format.
 pub struct StreamingResponse<S> {
+    /// Inner byte stream.
     inner: S,
+    /// Line buffer for partial data.
     buffer: String,
 }
 
@@ -31,15 +35,15 @@ where
 
     /// Parse a single SSE data line into a stream delta.
     fn parse_sse_line(&self, line: &str) -> Option<Result<ChatMessageStreamDelta, AgentError>> {
-        let line = line.trim();
+        let trimmed = line.trim();
 
         // Skip empty lines and comments
-        if line.is_empty() || line.starts_with(':') {
+        if trimmed.is_empty() || trimmed.starts_with(':') {
             return None;
         }
 
         // Parse "data: " prefix
-        if let Some(data) = line.strip_prefix("data: ") {
+        if let Some(data) = trimmed.strip_prefix("data: ") {
             // Check for stream end
             if data.trim() == "[DONE]" {
                 return None;
@@ -47,7 +51,7 @@ where
 
             // Parse JSON
             match serde_json::from_str::<StreamChunk>(data) {
-                Ok(chunk) => Some(Ok(self.chunk_to_delta(chunk))),
+                Ok(chunk) => Some(Ok(Self::chunk_to_delta(chunk))),
                 Err(e) => Some(Err(AgentError::model(format!(
                     "Failed to parse streaming response: {e}"
                 )))),
@@ -58,10 +62,10 @@ where
     }
 
     /// Convert a parsed chunk to a stream delta.
-    fn chunk_to_delta(&self, chunk: StreamChunk) -> ChatMessageStreamDelta {
-        let choice = chunk.choices.into_iter().next();
+    fn chunk_to_delta(chunk: StreamChunk) -> ChatMessageStreamDelta {
+        let first_choice = chunk.choices.into_iter().next();
 
-        let (content, tool_calls) = if let Some(choice) = choice {
+        let (content, tool_calls) = if let Some(choice) = first_choice {
             let content = choice.delta.content;
             let tool_calls = choice.delta.tool_calls.map(|tcs| {
                 tcs.into_iter()
@@ -71,11 +75,9 @@ where
                         r#type: tc.r#type,
                         function: tc.function.map(|f| ChatMessageToolCallFunction {
                             name: f.name.unwrap_or_default(),
-                            arguments: f
-                                .arguments
-                                .map_or(serde_json::Value::Null, |a| {
-                                    serde_json::from_str(&a).unwrap_or(serde_json::Value::Null)
-                                }),
+                            arguments: f.arguments.map_or(serde_json::Value::Null, |a| {
+                                serde_json::from_str(&a).unwrap_or(serde_json::Value::Null)
+                            }),
                             description: None,
                         }),
                     })
@@ -125,8 +127,7 @@ where
                     if let Ok(text) = std::str::from_utf8(&bytes) {
                         self.buffer.push_str(text);
                     }
-                    // Continue to try parsing
-                    continue;
+                    // Loop continues to try parsing
                 }
                 Poll::Ready(Some(Err(e))) => {
                     return Poll::Ready(Some(Err(AgentError::from(e))));
@@ -152,44 +153,65 @@ where
 /// `OpenAI` streaming chunk structure.
 #[derive(Debug, Deserialize)]
 struct StreamChunk {
+    /// Chunk ID.
     #[allow(dead_code)]
     id: Option<String>,
+    /// Response choices.
     choices: Vec<StreamChoice>,
+    /// Token usage (only in final chunk).
     usage: Option<StreamUsage>,
 }
 
+/// Streaming response choice.
 #[derive(Debug, Deserialize)]
 struct StreamChoice {
+    /// Choice index.
     #[allow(dead_code)]
     index: usize,
+    /// Delta content.
     delta: StreamDelta,
+    /// Finish reason.
     #[allow(dead_code)]
     finish_reason: Option<String>,
 }
 
+/// Delta content in streaming response.
 #[derive(Debug, Deserialize)]
 struct StreamDelta {
+    /// Text content.
     content: Option<String>,
+    /// Tool calls.
     tool_calls: Option<Vec<StreamToolCall>>,
 }
 
+/// Tool call in streaming response.
 #[derive(Debug, Deserialize)]
 struct StreamToolCall {
+    /// Tool call index.
     index: Option<usize>,
+    /// Tool call ID.
     id: Option<String>,
+    /// Tool call type.
     r#type: Option<String>,
+    /// Function details.
     function: Option<StreamFunction>,
 }
 
+/// Function details in streaming tool call.
 #[derive(Debug, Deserialize)]
 struct StreamFunction {
+    /// Function name.
     name: Option<String>,
+    /// Function arguments (JSON string).
     arguments: Option<String>,
 }
 
+/// Token usage in streaming response.
 #[derive(Debug, Deserialize)]
 struct StreamUsage {
+    /// Input tokens.
     prompt_tokens: u32,
+    /// Output tokens.
     completion_tokens: u32,
 }
 

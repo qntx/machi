@@ -275,15 +275,17 @@ impl OpenAIModel {
             body["top_p"] = serde_json::json!(top_p);
         }
         if let Some(stop) = &options.stop_sequences
-            && !stop.is_empty() && self.supports_stop_parameter() {
-                body["stop"] = serde_json::json!(stop);
-            }
+            && !stop.is_empty()
+            && self.supports_stop_parameter()
+        {
+            body["stop"] = serde_json::json!(stop);
+        }
         if let Some(tools) = &options.tools
-            && !tools.is_empty() {
-                let tool_defs: Vec<_> =
-                    tools.iter().map(ToolDefinition::to_openai_format).collect();
-                body["tools"] = serde_json::json!(tool_defs);
-            }
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<_> = tools.iter().map(ToolDefinition::to_openai_format).collect();
+            body["tools"] = serde_json::json!(tool_defs);
+        }
         if let Some(format) = &options.response_format {
             body["response_format"] = format.clone();
         }
@@ -384,9 +386,9 @@ impl Model for OpenAIModel {
         };
 
         let token_usage = json.get("usage").map(|usage| TokenUsage {
-                input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-                output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0) as u32,
-            });
+            input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+            output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0) as u32,
+        });
 
         Ok(ModelResponse {
             message,
@@ -531,23 +533,25 @@ impl AnthropicModel {
             body["top_p"] = serde_json::json!(top_p);
         }
         if let Some(stop) = &options.stop_sequences
-            && !stop.is_empty() {
-                body["stop_sequences"] = serde_json::json!(stop);
-            }
+            && !stop.is_empty()
+        {
+            body["stop_sequences"] = serde_json::json!(stop);
+        }
         if let Some(tools) = &options.tools
-            && !tools.is_empty() {
-                let tool_defs: Vec<Value> = tools
-                    .iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "name": t.name,
-                            "description": t.description,
-                            "input_schema": t.parameters
-                        })
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.parameters
                     })
-                    .collect();
-                body["tools"] = serde_json::json!(tool_defs);
-            }
+                })
+                .collect();
+            body["tools"] = serde_json::json!(tool_defs);
+        }
 
         body
     }

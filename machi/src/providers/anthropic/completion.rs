@@ -1,5 +1,14 @@
 //! Anthropic Messages API implementation.
 
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::missing_fields_in_debug,
+    clippy::match_same_arms,
+    clippy::unused_self,
+    clippy::unwrap_used,
+    clippy::unnecessary_wraps
+)]
+
 use super::client::AnthropicClient;
 use super::streaming::StreamingResponse;
 use crate::error::AgentError;
@@ -139,25 +148,27 @@ impl CompletionModel {
 
         // Stop sequences
         if let Some(stop) = &options.stop_sequences
-            && !stop.is_empty() {
-                body["stop_sequences"] = serde_json::json!(stop);
-            }
+            && !stop.is_empty()
+        {
+            body["stop_sequences"] = serde_json::json!(stop);
+        }
 
         // Tools
         if let Some(tools) = &options.tools
-            && !tools.is_empty() {
-                let tool_defs: Vec<Value> = tools
-                    .iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "name": t.name,
-                            "description": t.description,
-                            "input_schema": t.parameters
-                        })
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.parameters
                     })
-                    .collect();
-                body["tools"] = serde_json::json!(tool_defs);
-            }
+                })
+                .collect();
+            body["tools"] = serde_json::json!(tool_defs);
+        }
 
         body
     }
@@ -357,7 +368,7 @@ mod tests {
         let model = client.completion_model("claude-3-5-sonnet-latest");
         assert_eq!(model.default_max_tokens, 4096);
 
-        let model = model.with_default_max_tokens(8192);
-        assert_eq!(model.default_max_tokens, 8192);
+        let model_updated = model.with_default_max_tokens(8192);
+        assert_eq!(model_updated.default_max_tokens, 8192);
     }
 }

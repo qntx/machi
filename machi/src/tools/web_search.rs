@@ -4,9 +4,11 @@ use crate::tool::{Tool, ToolError};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::Write;
 
 /// Generic web search tool with configurable backend.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct WebSearchTool {
     /// Maximum number of results to return.
     pub max_results: usize,
@@ -17,8 +19,10 @@ pub struct WebSearchTool {
 /// Supported search engines.
 #[derive(Debug, Clone, Copy, Default)]
 pub enum SearchEngine {
+    /// `DuckDuckGo` search engine (default).
     #[default]
     DuckDuckGo,
+    /// Bing search engine.
     Bing,
 }
 
@@ -78,10 +82,7 @@ impl WebSearchTool {
 
         let mut output = String::from("## Search Results\n\n");
         for result in results {
-            output.push_str(&format!(
-                "[{}]({})\n{}\n\n",
-                result.title, result.link, result.description
-            ));
+            let _ = write!(output, "[{}]({})\n{}\n\n", result.title, result.link, result.description);
         }
         output
     }
@@ -110,13 +111,13 @@ impl WebSearchTool {
             .map_err(|e| ToolError::ExecutionError(format!("Failed to read response: {e}")))?;
 
         // Simple HTML parsing for DuckDuckGo Lite results
-        let results = self.parse_duckduckgo_html(&html);
+        let results = Self::parse_duckduckgo_html(&html);
 
         Ok(results.into_iter().take(self.max_results).collect())
     }
 
     /// Parse `DuckDuckGo` Lite HTML response.
-    fn parse_duckduckgo_html(&self, html: &str) -> Vec<SearchResult> {
+    fn parse_duckduckgo_html(html: &str) -> Vec<SearchResult> {
         let mut results = Vec::new();
 
         // Simple regex-based parsing for result links
@@ -170,13 +171,13 @@ impl WebSearchTool {
             .map_err(|e| ToolError::ExecutionError(format!("Failed to read response: {e}")))?;
 
         // Simple XML parsing for RSS items
-        let results = self.parse_rss_xml(&xml);
+        let results = Self::parse_rss_xml(&xml);
 
         Ok(results.into_iter().take(self.max_results).collect())
     }
 
     /// Parse RSS XML response.
-    fn parse_rss_xml(&self, xml: &str) -> Vec<SearchResult> {
+    fn parse_rss_xml(xml: &str) -> Vec<SearchResult> {
         let mut results = Vec::new();
 
         // Simple regex-based parsing for RSS items

@@ -372,9 +372,10 @@ pub fn aggregate_stream_deltas(deltas: &[ChatMessageStreamDelta]) -> ChatMessage
                     entry.function.name.clone_from(&func.name);
                     // Serialize arguments to string and append
                     if let Ok(args_str) = serde_json::to_string(&func.arguments)
-                        && let Value::String(s) = &mut entry.function.arguments {
-                            s.push_str(&args_str);
-                        }
+                        && let Value::String(s) = &mut entry.function.arguments
+                    {
+                        s.push_str(&args_str);
+                    }
                 }
             }
         }

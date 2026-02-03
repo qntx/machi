@@ -1,5 +1,7 @@
 //! Final answer tool for concluding agent tasks.
 
+#![allow(clippy::exhaustive_structs)]
+
 use crate::tool::{Tool, ToolError};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -11,6 +13,7 @@ pub struct FinalAnswerTool;
 
 /// Arguments for the final answer tool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct FinalAnswerArgs {
     /// The final answer to the problem.
     pub answer: Value,

@@ -1,5 +1,11 @@
 //! Anthropic streaming response handling.
 
+#![allow(
+    clippy::option_if_let_else,
+    clippy::needless_continue,
+    clippy::enum_variant_names
+)]
+
 use crate::error::AgentError;
 use crate::message::{
     ChatMessageStreamDelta, ChatMessageToolCallFunction, ChatMessageToolCallStreamDelta,
@@ -46,15 +52,15 @@ where
 
     /// Parse a single SSE data line into a stream delta.
     fn parse_sse_line(&mut self, line: &str) -> Option<Result<ChatMessageStreamDelta, AgentError>> {
-        let line = line.trim();
+        let trimmed = line.trim();
 
         // Skip empty lines and comments
-        if line.is_empty() || line.starts_with(':') {
+        if trimmed.is_empty() || trimmed.starts_with(':') {
             return None;
         }
 
         // Parse "data: " prefix
-        if let Some(data) = line.strip_prefix("data: ") {
+        if let Some(data) = trimmed.strip_prefix("data: ") {
             // Parse JSON event
             match serde_json::from_str::<StreamEvent>(data) {
                 Ok(event) => self.handle_event(event),
@@ -64,7 +70,7 @@ where
                     None
                 }
             }
-        } else if line.starts_with("event: ") {
+        } else if trimmed.starts_with("event: ") {
             // Event type line, skip
             None
         } else {
@@ -146,25 +152,29 @@ where
             }
             StreamEvent::MessageDelta { usage, .. } => {
                 // Final message delta with usage
-                usage.map(|usage| Ok(ChatMessageStreamDelta {
+                usage.map(|usage| {
+                    Ok(ChatMessageStreamDelta {
                         content: None,
                         tool_calls: None,
                         token_usage: Some(TokenUsage {
                             input_tokens: usage.input_tokens.unwrap_or(0),
                             output_tokens: usage.output_tokens,
                         }),
-                    }))
+                    })
+                })
             }
             StreamEvent::MessageStart { message } => {
                 // Extract input tokens from message start
-                message.usage.map(|usage| Ok(ChatMessageStreamDelta {
+                message.usage.map(|usage| {
+                    Ok(ChatMessageStreamDelta {
                         content: None,
                         tool_calls: None,
                         token_usage: Some(TokenUsage {
                             input_tokens: usage.input_tokens.unwrap_or(0),
                             output_tokens: 0,
                         }),
-                    }))
+                    })
+                })
             }
             StreamEvent::MessageStop | StreamEvent::Ping => None,
             StreamEvent::Error { error } => Some(Err(AgentError::model(format!(

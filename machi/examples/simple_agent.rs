@@ -5,6 +5,8 @@
 //! cargo run --example simple_agent
 //! ```
 
+#![allow(clippy::print_stdout, clippy::print_stderr, clippy::unused_async)]
+
 use machi::prelude::*;
 
 /// Adds two numbers.

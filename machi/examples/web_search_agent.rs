@@ -5,6 +5,8 @@
 //! cargo run --example web_search_agent
 //! ```
 
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 use machi::prelude::*;
 
 #[tokio::main]

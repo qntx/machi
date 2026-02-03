@@ -1,5 +1,7 @@
 //! Anthropic API client implementation.
 
+#![allow(clippy::missing_fields_in_debug, clippy::missing_panics_doc)]
+
 use super::ANTHROPIC_VERSION_LATEST;
 use super::completion::CompletionModel;
 use crate::providers::common::FromEnv;
@@ -96,9 +98,10 @@ impl AnthropicClient {
 
         // Add beta headers if any
         if !self.anthropic_betas.is_empty()
-            && let Ok(value) = HeaderValue::from_str(&self.anthropic_betas.join(",")) {
-                headers.insert("anthropic-beta", value);
-            }
+            && let Ok(value) = HeaderValue::from_str(&self.anthropic_betas.join(","))
+        {
+            headers.insert("anthropic-beta", value);
+        }
 
         headers
     }

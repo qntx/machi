@@ -1,82 +1,80 @@
-//! Agent implementations for executing tasks with tools.
+//! AI Agent for executing tasks with tools.
 //!
-//! This module provides the core agent types that can execute tasks
-//! using language models and tools.
+//! This module provides a lightweight, ergonomic agent that uses LLM function
+//! calling to accomplish tasks through tool invocations.
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! let mut agent = Agent::builder()
+//!     .model(model)
+//!     .tool(Box::new(MyTool))
+//!     .build();
+//!
+//! let result = agent.run("What is 2 + 2?").await?;
+//! ```
 
-use crate::error::{AgentError, Result};
-use crate::memory::{
-    ActionStep, AgentMemory, FinalAnswerStep, TaskStep, Timing, TokenUsage, ToolCall,
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
-use crate::providers::common::{GenerateOptions, Model};
-use crate::tool::{BoxedTool, ToolBox, ToolDefinition};
-use crate::tools::FinalAnswerTool;
-use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tracing::{debug, info, warn};
 
-/// Result of an agent run.
-#[derive(Debug, Clone)]
-pub struct RunResult {
-    /// Final output of the agent.
-    pub output: Option<Value>,
-    /// State of the run ("success" or "`max_steps_error`").
-    pub state: String,
-    /// Steps taken during the run.
-    pub steps: Vec<Value>,
-    /// Token usage during the run.
-    pub token_usage: Option<TokenUsage>,
-    /// Timing information.
-    pub timing: Timing,
-}
+use serde_json::Value;
+use tracing::{debug, info, instrument, warn};
+
+use crate::{
+    error::{AgentError, Result},
+    memory::{ActionStep, AgentMemory, FinalAnswerStep, TaskStep, Timing, ToolCall},
+    providers::common::{GenerateOptions, Model},
+    tool::{BoxedTool, ToolBox},
+    tools::FinalAnswerTool,
+};
 
 /// Configuration for an agent.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AgentConfig {
-    /// Maximum number of steps.
+    /// Maximum number of steps (default: 20).
+    #[doc(hidden)]
     pub max_steps: usize,
     /// Planning interval (run planning every N steps).
     pub planning_interval: Option<usize>,
-    /// Agent name (for managed agents).
+    /// Agent name.
     pub name: Option<String>,
-    /// Agent description (for managed agents).
+    /// Agent description.
     pub description: Option<String>,
-    /// Whether to stream outputs.
-    pub stream_outputs: bool,
 }
 
-impl Default for AgentConfig {
-    fn default() -> Self {
+impl AgentConfig {
+    const DEFAULT_MAX_STEPS: usize = 20;
+
+    /// Create a new config with default values.
+    #[must_use]
+    pub fn new() -> Self {
         Self {
-            max_steps: 20,
-            planning_interval: None,
-            name: None,
-            description: None,
-            stream_outputs: false,
+            max_steps: Self::DEFAULT_MAX_STEPS,
+            ..Default::default()
         }
     }
 }
 
 /// AI agent that uses LLM function calling to execute tasks with tools.
+///
+/// The agent follows a ReAct-style loop:
+/// 1. Receive a task
+/// 2. Think and decide which tool to call
+/// 3. Execute the tool and observe the result
+/// 4. Repeat until `final_answer` is called or max steps reached
 pub struct Agent {
-    /// The language model to use.
     model: Box<dyn Model>,
-    /// Available tools.
     tools: ToolBox,
-    /// Agent configuration.
     config: AgentConfig,
-    /// Agent memory.
     memory: AgentMemory,
-    /// System prompt template.
     system_prompt: String,
-    /// Interrupt flag.
     interrupt_flag: Arc<AtomicBool>,
-    /// Current step number.
     step_number: usize,
-    /// Current task.
-    current_task: Option<String>,
-    /// Additional state.
     state: HashMap<String, Value>,
 }
 
@@ -85,250 +83,255 @@ impl std::fmt::Debug for Agent {
         f.debug_struct("Agent")
             .field("config", &self.config)
             .field("tools", &self.tools)
+            .field("step", &self.step_number)
             .finish_non_exhaustive()
     }
 }
 
 impl Agent {
     /// Create a new agent builder.
+    #[inline]
     #[must_use]
     pub fn builder() -> AgentBuilder {
-        AgentBuilder::default()
+        AgentBuilder::new()
     }
 
-    /// Initialize the system prompt.
-    fn initialize_system_prompt(&self) -> String {
-        let tool_descriptions: Vec<String> = self
+    /// Build the system prompt from available tools.
+    fn build_system_prompt(&self) -> String {
+        let tools = self
             .tools
             .definitions()
             .iter()
             .map(|t| format!("- {}: {}", t.name, t.description))
-            .collect();
+            .collect::<Vec<_>>()
+            .join("\n");
 
         format!(
-            r"You are a helpful AI assistant that can use tools to accomplish tasks.
-
-Available tools:
-{}
-
-When you need to use a tool, respond with a tool call. When you have the final answer, use the 'final_answer' tool to provide it.
-
-Think step by step about what you need to do to accomplish the task.",
-            tool_descriptions.join("\n")
+            "You are a helpful AI assistant that can use tools to accomplish tasks.\n\n\
+             Available tools:\n{tools}\n\n\
+             When you need to use a tool, respond with a tool call. \
+             When you have the final answer, use the 'final_answer' tool to provide it.\n\n\
+             Think step by step about what you need to do to accomplish the task."
         )
     }
 
-    /// Perform a single step.
-    async fn step(&self, action_step: &mut ActionStep) -> Result<Option<Value>> {
-        // Build messages from memory
+    /// Execute a single reasoning step.
+    async fn execute_step(&self, step: &mut ActionStep) -> Result<Option<Value>> {
         let messages = self.memory.to_messages(false);
-        action_step.model_input_messages = Some(messages.clone());
+        step.model_input_messages = Some(messages.clone());
 
-        // Get tool definitions
-        let tool_defs: Vec<ToolDefinition> = self.tools.definitions();
+        let options = GenerateOptions::new().with_tools(self.tools.definitions());
+        debug!(step = step.step_number, "Generating model response");
 
-        // Generate response
-        let options = GenerateOptions::new().with_tools(tool_defs);
-
-        debug!(
-            "Generating model response for step {}",
-            action_step.step_number
-        );
         let response = self.model.generate(messages, options).await?;
+        step.model_output_message = Some(response.message.clone());
+        step.token_usage = response.token_usage;
+        step.model_output = response.message.text_content();
 
-        action_step.model_output_message = Some(response.message.clone());
-        action_step.token_usage = response.token_usage;
+        let Some(tool_calls) = &response.message.tool_calls else {
+            return Ok(None);
+        };
 
-        if let Some(text) = response.message.text_content() {
-            action_step.model_output = Some(text);
+        let mut observations = Vec::with_capacity(tool_calls.len());
+        let mut final_answer = None;
+
+        for tc in tool_calls {
+            step.tool_calls
+                .get_or_insert_with(Vec::new)
+                .push(ToolCall::new(&tc.id, tc.name(), tc.arguments().clone()));
+
+            if tc.name() == "final_answer" {
+                if let Ok(args) = tc.parse_arguments::<crate::tools::FinalAnswerArgs>() {
+                    final_answer = Some(args.answer);
+                    step.is_final_answer = true;
+                }
+                continue;
+            }
+
+            match self.tools.call(tc.name(), tc.arguments().clone()).await {
+                Ok(result) => observations.push(format!("Tool '{}' returned: {result}", tc.name())),
+                Err(e) => {
+                    let msg = format!("Tool '{}' failed: {e}", tc.name());
+                    observations.push(msg.clone());
+                    step.error = Some(msg);
+                }
+            }
         }
 
-        // Check for tool calls
-        if let Some(tool_calls) = &response.message.tool_calls {
-            let mut observations = Vec::new();
-            let mut final_answer: Option<Value> = None;
+        if !observations.is_empty() {
+            step.observations = Some(observations.join("\n"));
+        }
 
-            for tc in tool_calls {
-                let tool_call = ToolCall::new(&tc.id, tc.name(), tc.arguments().clone());
-                action_step
-                    .tool_calls
-                    .get_or_insert_with(Vec::new)
-                    .push(tool_call);
-
-                // Check for final answer
-                if tc.name() == "final_answer" {
-                    if let Ok(args) = tc.parse_arguments::<crate::tools::FinalAnswerArgs>() {
-                        final_answer = Some(args.answer);
-                        action_step.is_final_answer = true;
-                    }
-                    continue;
-                }
-
-                // Execute tool
-                match self.tools.call(tc.name(), tc.arguments().clone()).await {
-                    Ok(result) => {
-                        let obs = format!("Tool '{}' returned: {}", tc.name(), result);
-                        observations.push(obs);
-                    }
-                    Err(e) => {
-                        let err_msg = format!("Tool '{}' failed: {}", tc.name(), e);
-                        observations.push(err_msg.clone());
-                        action_step.error = Some(err_msg);
-                    }
-                }
-            }
-
-            if !observations.is_empty() {
-                action_step.observations = Some(observations.join("\n"));
-            }
-
-            if let Some(answer) = final_answer {
-                action_step.action_output = Some(answer.clone());
-                return Ok(Some(answer));
-            }
+        if let Some(answer) = final_answer {
+            step.action_output = Some(answer.clone());
+            return Ok(Some(answer));
         }
 
         Ok(None)
     }
 
     /// Run the agent with a task.
+    #[inline]
     pub async fn run(&mut self, task: &str) -> Result<Value> {
         self.run_with_args(task, HashMap::new()).await
     }
 
-    /// Run the agent with a task and additional arguments.
+    /// Run the agent with a task and additional context.
+    #[instrument(skip(self, args), fields(max_steps = self.config.max_steps))]
     pub async fn run_with_args(
         &mut self,
         task: &str,
         args: HashMap<String, Value>,
     ) -> Result<Value> {
-        // Reset state
+        self.prepare_run(task, args);
+        info!("Starting agent run");
+
+        let result = self.run_loop().await;
+
+        match &result {
+            Ok(answer) => {
+                self.memory.add_step(FinalAnswerStep {
+                    output: answer.clone(),
+                });
+                info!("Agent completed successfully");
+            }
+            Err(e) => warn!(error = %e, "Agent run failed"),
+        }
+
+        result
+    }
+
+    /// Prepare the agent for a new run.
+    fn prepare_run(&mut self, task: &str, args: HashMap<String, Value>) {
         self.memory.reset();
         self.step_number = 0;
         self.interrupt_flag.store(false, Ordering::SeqCst);
         self.state = args;
 
-        // Set up system prompt
-        self.system_prompt = self.initialize_system_prompt();
+        self.system_prompt = self.build_system_prompt();
         self.memory
             .system_prompt
             .system_prompt
             .clone_from(&self.system_prompt);
 
-        // Store task
-        let task_with_args = if self.state.is_empty() {
+        let task_text = if self.state.is_empty() {
             task.to_string()
         } else {
             format!(
-                "{}\n\nAdditional context provided:\n{}",
-                task,
+                "{task}\n\nAdditional context provided:\n{}",
                 serde_json::to_string_pretty(&self.state).unwrap_or_default()
             )
         };
-        self.current_task = Some(task_with_args.clone());
 
-        // Add task step
         self.memory.add_step(TaskStep {
-            task: task_with_args,
+            task: task_text,
             task_images: None,
         });
+    }
 
-        info!(
-            "Starting agent run with max {} steps",
-            self.config.max_steps
-        );
-
-        // Main loop
-        let mut final_answer: Option<Value> = None;
-
+    /// Main execution loop.
+    async fn run_loop(&mut self) -> Result<Value> {
         while self.step_number < self.config.max_steps {
-            // Check interrupt
             if self.interrupt_flag.load(Ordering::SeqCst) {
                 return Err(AgentError::Interrupted);
             }
 
             self.step_number += 1;
-            info!("Executing step {}", self.step_number);
 
-            let mut action_step = ActionStep {
+            let mut step = ActionStep {
                 step_number: self.step_number,
                 timing: Timing::start_now(),
                 ..Default::default()
             };
 
-            match self.step(&mut action_step).await {
+            let result = self.execute_step(&mut step).await;
+            step.timing.complete();
+
+            match result {
                 Ok(Some(answer)) => {
-                    action_step.timing.complete();
-                    self.memory.add_step(action_step);
-                    final_answer = Some(answer);
-                    break;
+                    self.memory.add_step(step);
+                    return Ok(answer);
                 }
-                Ok(None) => {
-                    action_step.timing.complete();
-                    self.memory.add_step(action_step);
-                }
+                Ok(None) => self.memory.add_step(step),
                 Err(e) => {
-                    action_step.error = Some(e.to_string());
-                    action_step.timing.complete();
-                    self.memory.add_step(action_step);
-                    warn!("Step {} error: {}", self.step_number, e);
+                    step.error = Some(e.to_string());
+                    self.memory.add_step(step);
+                    warn!(step = self.step_number, error = %e, "Step failed");
                 }
             }
         }
 
-        // Handle max steps reached
-        if final_answer.is_none() {
-            warn!("Reached maximum steps ({})", self.config.max_steps);
-            self.memory.add_step(FinalAnswerStep {
-                output: Value::String("Maximum steps reached without final answer".to_string()),
-            });
-            return Err(AgentError::max_steps(
-                self.step_number,
-                self.config.max_steps,
-            ));
-        }
-
-        // Add final answer step
-        if let Some(ref answer) = final_answer {
-            self.memory.add_step(FinalAnswerStep {
-                output: answer.clone(),
-            });
-        }
-
-        info!("Agent completed successfully");
-        final_answer.ok_or_else(|| AgentError::internal("No final answer produced"))
+        self.memory.add_step(FinalAnswerStep {
+            output: Value::String("Maximum steps reached".into()),
+        });
+        Err(AgentError::max_steps(
+            self.step_number,
+            self.config.max_steps,
+        ))
     }
 
     /// Get the agent's name.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.config.name.as_deref()
     }
 
     /// Get the agent's description.
+    #[inline]
     pub fn description(&self) -> Option<&str> {
         self.config.description.as_deref()
     }
 
-    /// Interrupt the agent's execution.
+    /// Request the agent to stop after the current step.
+    #[inline]
     pub fn interrupt(&self) {
         self.interrupt_flag.store(true, Ordering::SeqCst);
     }
 
+    /// Check if an interrupt has been requested.
+    #[inline]
+    pub fn is_interrupted(&self) -> bool {
+        self.interrupt_flag.load(Ordering::SeqCst)
+    }
+
     /// Get the agent's memory.
+    #[inline]
     pub const fn memory(&self) -> &AgentMemory {
         &self.memory
     }
 
-    /// Reset the agent's state and memory.
+    /// Get mutable access to the agent's memory.
+    #[inline]
+    pub const fn memory_mut(&mut self) -> &mut AgentMemory {
+        &mut self.memory
+    }
+
+    /// Reset the agent for a new task.
     pub fn reset(&mut self) {
         self.memory.reset();
         self.step_number = 0;
-        self.current_task = None;
         self.state.clear();
+        self.interrupt_flag.store(false, Ordering::SeqCst);
+    }
+
+    /// Get the current step number.
+    #[inline]
+    pub const fn current_step(&self) -> usize {
+        self.step_number
     }
 }
 
 /// Builder for [`Agent`].
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let agent = Agent::builder()
+///     .model(my_model)
+///     .tool(Box::new(MyTool))
+///     .max_steps(10)
+///     .build();
+/// ```
 #[derive(Default)]
 pub struct AgentBuilder {
     model: Option<Box<dyn Model>>,
@@ -340,56 +343,65 @@ impl std::fmt::Debug for AgentBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AgentBuilder")
             .field("has_model", &self.model.is_some())
-            .field("tools_count", &self.tools.len())
-            .field("config", &self.config)
-            .finish()
+            .field("tools", &self.tools.len())
+            .finish_non_exhaustive()
     }
 }
 
 impl AgentBuilder {
-    /// Set the model.
+    /// Create a new builder with default settings.
+    #[inline]
     #[must_use]
-    pub fn model<M: Model + 'static>(mut self, model: M) -> Self {
+    pub fn new() -> Self {
+        Self {
+            config: AgentConfig::new(),
+            ..Default::default()
+        }
+    }
+
+    /// Set the language model.
+    #[must_use]
+    pub fn model(mut self, model: impl Model + 'static) -> Self {
         self.model = Some(Box::new(model));
         self
     }
 
-    /// Add a tool.
+    /// Add a tool to the agent.
     #[must_use]
     pub fn tool(mut self, tool: BoxedTool) -> Self {
         self.tools.push(tool);
         self
     }
 
-    /// Add multiple tools.
+    /// Add multiple tools to the agent.
     #[must_use]
-    pub fn tools(mut self, tools: Vec<BoxedTool>) -> Self {
+    pub fn tools(mut self, tools: impl IntoIterator<Item = BoxedTool>) -> Self {
         self.tools.extend(tools);
         self
     }
 
-    /// Set max steps.
+    /// Set the maximum number of steps (default: 20).
     #[must_use]
     pub const fn max_steps(mut self, max: usize) -> Self {
         self.config.max_steps = max;
         self
     }
 
-    /// Set planning interval.
+    /// Set the planning interval.
     #[must_use]
     pub const fn planning_interval(mut self, interval: usize) -> Self {
         self.config.planning_interval = Some(interval);
         self
     }
 
-    /// Set agent name.
+    /// Set the agent's name.
     #[must_use]
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.config.name = Some(name.into());
         self
     }
 
-    /// Set agent description.
+    /// Set the agent's description.
     #[must_use]
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.config.description = Some(desc.into());
@@ -400,30 +412,34 @@ impl AgentBuilder {
     ///
     /// # Panics
     ///
-    /// Panics if no model is provided.
+    /// Panics if no model is provided. Use [`try_build`](Self::try_build) for
+    /// a fallible alternative.
     #[must_use]
     pub fn build(self) -> Agent {
-        let model = self.model.expect("Model is required");
-        let mut toolbox = ToolBox::new();
+        self.try_build().expect("Model is required")
+    }
 
-        // Add user tools
+    /// Try to build the agent, returning an error if configuration is invalid.
+    pub fn try_build(self) -> Result<Agent> {
+        let model = self
+            .model
+            .ok_or_else(|| AgentError::configuration("Model is required"))?;
+
+        let mut tools = ToolBox::new();
         for tool in self.tools {
-            toolbox.add_boxed(tool);
+            tools.add_boxed(tool);
         }
+        tools.add(FinalAnswerTool);
 
-        // Add final answer tool
-        toolbox.add(FinalAnswerTool);
-
-        Agent {
+        Ok(Agent {
             model,
-            tools: toolbox,
+            tools,
             config: self.config,
             memory: AgentMemory::default(),
             system_prompt: String::new(),
-            interrupt_flag: Arc::new(AtomicBool::new(false)),
+            interrupt_flag: Arc::default(),
             step_number: 0,
-            current_task: None,
             state: HashMap::new(),
-        }
+        })
     }
 }

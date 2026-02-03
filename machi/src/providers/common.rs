@@ -48,6 +48,13 @@ impl std::ops::Add for TokenUsage {
     }
 }
 
+/// Safely convert u64 to u32, saturating at `u32::MAX` if overflow.
+#[inline]
+#[must_use]
+pub fn saturating_u32(value: u64) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
 impl std::ops::AddAssign for TokenUsage {
     fn add_assign(&mut self, rhs: Self) {
         self.input_tokens += rhs.input_tokens;

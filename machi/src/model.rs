@@ -6,6 +6,7 @@
 use crate::error::AgentError;
 use crate::memory::TokenUsage;
 use crate::message::{ChatMessage, ChatMessageStreamDelta};
+use crate::providers::common::saturating_u32;
 use crate::tool::ToolDefinition;
 use async_trait::async_trait;
 use futures::Stream;
@@ -386,8 +387,8 @@ impl Model for OpenAIModel {
         };
 
         let token_usage = json.get("usage").map(|usage| TokenUsage {
-            input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-            output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            input_tokens: saturating_u32(usage["prompt_tokens"].as_u64().unwrap_or(0)),
+            output_tokens: saturating_u32(usage["completion_tokens"].as_u64().unwrap_or(0)),
         });
 
         Ok(ModelResponse {
@@ -634,8 +635,8 @@ impl Model for AnthropicModel {
 
         let token_usage = if json.get("usage").is_some() {
             Some(TokenUsage {
-                input_tokens: json["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
-                output_tokens: json["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
+                input_tokens: saturating_u32(json["usage"]["input_tokens"].as_u64().unwrap_or(0)),
+                output_tokens: saturating_u32(json["usage"]["output_tokens"].as_u64().unwrap_or(0)),
             })
         } else {
             None

@@ -14,7 +14,9 @@ use super::client::OllamaClient;
 use super::streaming::StreamingResponse;
 use crate::error::AgentError;
 use crate::message::{ChatMessage, ChatMessageToolCall, MessageRole};
-use crate::providers::common::{GenerateOptions, Model, ModelResponse, ModelStream, TokenUsage};
+use crate::providers::common::{
+    GenerateOptions, Model, ModelResponse, ModelStream, TokenUsage, saturating_u32,
+};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
@@ -212,8 +214,8 @@ impl CompletionModel {
         // Parse token usage
         let token_usage = if json.get("prompt_eval_count").is_some() {
             Some(TokenUsage {
-                input_tokens: json["prompt_eval_count"].as_u64().unwrap_or(0) as u32,
-                output_tokens: json["eval_count"].as_u64().unwrap_or(0) as u32,
+                input_tokens: saturating_u32(json["prompt_eval_count"].as_u64().unwrap_or(0)),
+                output_tokens: saturating_u32(json["eval_count"].as_u64().unwrap_or(0)),
             })
         } else {
             None

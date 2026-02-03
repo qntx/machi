@@ -82,7 +82,11 @@ impl WebSearchTool {
 
         let mut output = String::from("## Search Results\n\n");
         for result in results {
-            let _ = write!(output, "[{}]({})\n{}\n\n", result.title, result.link, result.description);
+            let _ = write!(
+                output,
+                "[{}]({})\n{}\n\n",
+                result.title, result.link, result.description
+            );
         }
         output
     }

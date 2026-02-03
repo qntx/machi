@@ -1,6 +1,10 @@
 //! Ollama API client implementation.
 
-#![allow(clippy::missing_fields_in_debug, clippy::missing_panics_doc, clippy::unused_self)]
+#![allow(
+    clippy::missing_fields_in_debug,
+    clippy::missing_panics_doc,
+    clippy::unused_self
+)]
 
 use super::completion::CompletionModel;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};

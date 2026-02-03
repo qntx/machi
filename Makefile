@@ -29,7 +29,7 @@ bench:
 	cargo bench --all-features
 
 # Run Clippy linter with nightly toolchain, fixing issues automatically
-# and applying strict linting rules
+# and applying strict linting rules (uses workspace lints from Cargo.toml)
 .PHONY: clippy
 clippy:
 	cargo +nightly clippy --fix \
@@ -37,11 +37,7 @@ clippy:
 		--all-features \
 		--allow-dirty \
 		--allow-staged \
-		-- -D warnings \
-		-W clippy::pedantic \
-		-W clippy::nursery \
-		-W clippy::unwrap_used \
-		-W clippy::expect_used
+		-- -D warnings
 
 # Format the code using rustfmt with nightly toolchain
 .PHONY: fmt

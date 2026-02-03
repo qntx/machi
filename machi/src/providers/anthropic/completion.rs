@@ -13,7 +13,9 @@ use super::client::AnthropicClient;
 use super::streaming::StreamingResponse;
 use crate::error::AgentError;
 use crate::message::{ChatMessage, ChatMessageToolCall, MessageRole};
-use crate::providers::common::{GenerateOptions, Model, ModelResponse, ModelStream, TokenUsage};
+use crate::providers::common::{
+    GenerateOptions, Model, ModelResponse, ModelStream, TokenUsage, saturating_u32,
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -217,8 +219,8 @@ impl CompletionModel {
         };
 
         let token_usage = json.get("usage").map(|usage| TokenUsage {
-            input_tokens: usage["input_tokens"].as_u64().unwrap_or(0) as u32,
-            output_tokens: usage["output_tokens"].as_u64().unwrap_or(0) as u32,
+            input_tokens: saturating_u32(usage["input_tokens"].as_u64().unwrap_or(0)),
+            output_tokens: saturating_u32(usage["output_tokens"].as_u64().unwrap_or(0)),
         });
 
         Ok(ModelResponse {

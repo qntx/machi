@@ -21,7 +21,7 @@ assert_fs = "1.1"
 async-stream = "0.3"
 base64 = "0.22"
 bytes = "1.10"
-convert_case = "0.10"
+convert_case = "0.11"
 deluxe = { version = "0.5", features = ["full"] }
 epub = "2.1"
 eventsource-stream = "0.2"

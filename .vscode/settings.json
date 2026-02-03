@@ -1,4 +1,0 @@
-{
-    "rust-analyzer.cargo.features": ["derive","rmcp"],
-    "rust-analyzer.check.features": ["derive","rmcp"]
-}

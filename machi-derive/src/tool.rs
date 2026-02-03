@@ -1,367 +1,297 @@
-//! Implementation of the `#[tool]` attribute macro.
+//! Tool macro implementation.
 //!
-//! This module transforms functions into tool implementations that can be used
-//! with Machi agents.
-//!
-//! # Generated Items
-//!
-//! For a function `my_func`, the macro generates:
-//! - `MyFuncTool` - The tool struct implementing `Tool` trait
-//! - `MyFuncArgs` - The arguments struct for deserialization
-//! - `MY_FUNC_TOOL` - A static instance of the tool
-//!
-//! # Customization
-//!
-//! You can customize the tool name for LLM using the `name` attribute:
-//! ```ignore
-//! #[tool(name = "calculator_add")]
-//! fn add(...) { }
-//! // Tool name for LLM: "calculator_add"
-//! // Generates: AddTool, AddArgs, ADD_TOOL
-//! ```
+//! This module contains the implementation of the `#[tool]` attribute macro
+//! that transforms functions into Tool implementations.
 
 use convert_case::{Case, Casing};
-use proc_macro2::TokenStream;
-use quote::{format_ident, quote, quote_spanned};
+use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
+use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::{
     Expr, ExprLit, FnArg, Ident, ItemFn, Lit, Meta, Pat, PathArguments, ReturnType, Token, Type,
     parse::{Parse, ParseStream},
+    parse_macro_input,
     punctuated::Punctuated,
 };
 
-/// Parsed arguments from the `#[tool(...)]` attribute.
-#[derive(Default)]
-pub(crate) struct ToolMacroArgs {
-    /// Custom name for the tool (used in LLM interactions).
-    pub name: Option<String>,
-    /// Description of the tool for LLM context.
-    pub description: Option<String>,
-    /// Parameter descriptions for each argument.
-    pub param_descriptions: HashMap<String, String>,
-    /// List of required parameters.
-    pub required: Vec<String>,
+/// Parsed macro arguments for the `#[tool]` attribute.
+struct ToolArgs {
+    /// Tool description
+    description: Option<String>,
+    /// Parameter descriptions
+    param_descriptions: HashMap<String, String>,
+    /// Required parameters (non-optional)
+    required: Vec<String>,
 }
 
-impl Parse for ToolMacroArgs {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut result = Self::default();
+impl Parse for ToolArgs {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let mut description = None;
+        let mut param_descriptions = HashMap::new();
+        let mut required = Vec::new();
 
         if input.is_empty() {
-            return Ok(result);
+            return Ok(Self {
+                description,
+                param_descriptions,
+                required,
+            });
         }
 
         let meta_list: Punctuated<Meta, Token![,]> = Punctuated::parse_terminated(input)?;
 
         for meta in meta_list {
-            result.parse_meta_item(meta)?;
+            match meta {
+                Meta::NameValue(nv) => {
+                    let ident = nv.path.get_ident().map(ToString::to_string);
+                    if let (
+                        Some(ident_str),
+                        Expr::Lit(ExprLit {
+                            lit: Lit::Str(lit_str),
+                            ..
+                        }),
+                    ) = (ident, nv.value)
+                    {
+                        if ident_str == "description" {
+                            description = Some(lit_str.value());
+                        }
+                    }
+                }
+                Meta::List(list) if list.path.is_ident("params") => {
+                    let nested: Punctuated<Meta, Token![,]> =
+                        list.parse_args_with(Punctuated::parse_terminated)?;
+
+                    for meta in nested {
+                        if let Meta::NameValue(nv) = meta {
+                            if let Expr::Lit(ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            }) = nv.value
+                            {
+                                if let Some(param_name) = nv.path.get_ident() {
+                                    param_descriptions
+                                        .insert(param_name.to_string(), lit_str.value());
+                                }
+                            }
+                        }
+                    }
+                }
+                Meta::List(list) if list.path.is_ident("required") => {
+                    let required_vars: Punctuated<Ident, Token![,]> =
+                        list.parse_args_with(Punctuated::parse_terminated)?;
+
+                    for var in required_vars {
+                        required.push(var.to_string());
+                    }
+                }
+                _ => {}
+            }
         }
 
-        Ok(result)
+        Ok(Self {
+            description,
+            param_descriptions,
+            required,
+        })
     }
 }
 
-impl ToolMacroArgs {
-    /// Parse a single meta item from the attribute arguments.
-    fn parse_meta_item(&mut self, meta: Meta) -> syn::Result<()> {
-        match meta {
-            Meta::NameValue(nv) => {
-                let ident = nv
-                    .path
-                    .get_ident()
-                    .ok_or_else(|| syn::Error::new_spanned(&nv.path, "expected identifier"))?;
+/// Get JSON schema type for a Rust type.
+fn get_json_type(ty: &Type) -> TokenStream2 {
+    match ty {
+        Type::Path(type_path) => {
+            let segment = &type_path.path.segments[0];
+            let type_name = segment.ident.to_string();
 
-                match ident.to_string().as_str() {
-                    "name" => self.name = Some(extract_string_lit(&nv.value)?),
-                    "description" => self.description = Some(extract_string_lit(&nv.value)?),
-                    _ => {} // Silently ignore unknown for forward compatibility
+            // Handle Vec types
+            if type_name == "Vec" {
+                if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() {
+                        let inner_json_type = get_json_type(inner_type);
+                        return quote! {
+                            "type": "array",
+                            "items": { #inner_json_type }
+                        };
+                    }
+                }
+                return quote! { "type": "array" };
+            }
+
+            // Handle Option types
+            if type_name == "Option" {
+                if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() {
+                        let inner_json_type = get_json_type(inner_type);
+                        return quote! {
+                            #inner_json_type,
+                            "nullable": true
+                        };
+                    }
+                }
+                return quote! { "type": "object", "nullable": true };
+            }
+
+            // Handle primitive types
+            match type_name.as_str() {
+                "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64"
+                | "u128" | "usize" => {
+                    quote! { "type": "integer" }
+                }
+                "f32" | "f64" => {
+                    quote! { "type": "number" }
+                }
+                "String" | "str" => {
+                    quote! { "type": "string" }
+                }
+                "bool" => {
+                    quote! { "type": "boolean" }
+                }
+                _ => {
+                    quote! { "type": "object" }
                 }
             }
-            Meta::List(list) if list.path.is_ident("params") => {
-                self.parse_params_list(&list)?;
-            }
-            Meta::List(list) if list.path.is_ident("required") => {
-                self.parse_required_list(&list)?;
-            }
-            _ => {
-                // Silently ignore unknown meta items for forward compatibility
-            }
         }
-        Ok(())
-    }
-
-    /// Parse the `params(...)` nested list.
-    fn parse_params_list(&mut self, list: &syn::MetaList) -> syn::Result<()> {
-        let nested: Punctuated<Meta, Token![,]> =
-            list.parse_args_with(Punctuated::parse_terminated)?;
-
-        for meta in nested {
-            if let Meta::NameValue(nv) = meta {
-                let param_name = nv
-                    .path
-                    .get_ident()
-                    .ok_or_else(|| syn::Error::new_spanned(&nv.path, "expected parameter name"))?
-                    .to_string();
-                let description = extract_string_lit(&nv.value)?;
-                self.param_descriptions.insert(param_name, description);
+        Type::Reference(type_ref) => {
+            // Handle &str
+            if let Type::Path(inner) = &*type_ref.elem {
+                if inner.path.is_ident("str") {
+                    return quote! { "type": "string" };
+                }
             }
+            get_json_type(&type_ref.elem)
         }
-        Ok(())
-    }
-
-    /// Parse the `required(...)` nested list.
-    fn parse_required_list(&mut self, list: &syn::MetaList) -> syn::Result<()> {
-        let idents: Punctuated<Ident, Token![,]> =
-            list.parse_args_with(Punctuated::parse_terminated)?;
-
-        self.required = idents.into_iter().map(|id| id.to_string()).collect();
-        Ok(())
-    }
-}
-
-/// Extract a string literal from an expression.
-fn extract_string_lit(expr: &Expr) -> syn::Result<String> {
-    match expr {
-        Expr::Lit(ExprLit {
-            lit: Lit::Str(lit_str),
-            ..
-        }) => Ok(lit_str.value()),
-        _ => Err(syn::Error::new_spanned(expr, "expected string literal")),
-    }
-}
-
-/// Information extracted from a function's return type.
-struct ReturnTypeInfo {
-    output_type: TokenStream,
-    error_type: TokenStream,
-}
-
-/// Extract Output and Error types from a `Result<T, E>` return type.
-fn extract_result_types(return_type: &ReturnType) -> syn::Result<ReturnTypeInfo> {
-    let ReturnType::Type(_, ty) = return_type else {
-        return Err(syn::Error::new_spanned(
-            return_type,
-            "function must have a return type of `Result<T, E>`",
-        ));
-    };
-
-    let Type::Path(type_path) = ty.as_ref() else {
-        return Err(syn::Error::new_spanned(
-            ty,
-            "return type must be a path type (e.g., `Result<T, E>`)",
-        ));
-    };
-
-    let last_segment = type_path
-        .path
-        .segments
-        .last()
-        .ok_or_else(|| syn::Error::new_spanned(&type_path.path, "invalid return type path"))?;
-
-    if last_segment.ident != "Result" {
-        return Err(syn::Error::new_spanned(
-            &last_segment.ident,
-            "return type must be `Result<T, E>`",
-        ));
-    }
-
-    let PathArguments::AngleBracketed(args) = &last_segment.arguments else {
-        return Err(syn::Error::new_spanned(
-            &last_segment.arguments,
-            "expected angle bracketed type parameters for Result",
-        ));
-    };
-
-    if args.args.len() != 2 {
-        return Err(syn::Error::new_spanned(
-            args,
-            "Result must have exactly two type parameters: Result<T, E>",
-        ));
-    }
-
-    let output = &args.args[0];
-    let error = &args.args[1];
-
-    Ok(ReturnTypeInfo {
-        output_type: quote!(#output),
-        error_type: quote!(#error),
-    })
-}
-
-/// Information about a single function parameter.
-struct ParamInfo<'a> {
-    name: &'a Ident,
-    ty: &'a Type,
-    description: String,
-    json_type: TokenStream,
-}
-
-/// Extract parameter information from function arguments.
-fn extract_params<'a>(
-    inputs: impl Iterator<Item = &'a FnArg>,
-    param_descriptions: &HashMap<String, String>,
-) -> Vec<ParamInfo<'a>> {
-    inputs
-        .filter_map(|arg| {
-            let FnArg::Typed(pat_type) = arg else {
-                return None;
-            };
-            let Pat::Ident(param_ident) = pat_type.pat.as_ref() else {
-                return None;
-            };
-
-            let name = &param_ident.ident;
-            let name_str = name.to_string();
-            let ty = pat_type.ty.as_ref();
-            let description = param_descriptions
-                .get(&name_str)
-                .cloned()
-                .unwrap_or_else(|| format!("Parameter {name_str}"));
-            let json_type = rust_type_to_json_schema(ty);
-
-            Some(ParamInfo {
-                name,
-                ty,
-                description,
-                json_type,
-            })
-        })
-        .collect()
-}
-
-/// Convert a Rust type to a JSON schema type representation.
-fn rust_type_to_json_schema(ty: &Type) -> TokenStream {
-    let Type::Path(type_path) = ty else {
-        return quote! { "type": "object" };
-    };
-
-    let Some(segment) = type_path.path.segments.first() else {
-        return quote! { "type": "object" };
-    };
-
-    let type_name = segment.ident.to_string();
-
-    // Handle Vec<T> types
-    if type_name == "Vec" {
-        if let PathArguments::AngleBracketed(args) = &segment.arguments
-            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
-        {
-            let inner_json_type = rust_type_to_json_schema(inner_type);
-            return quote! {
-                "type": "array",
-                "items": { #inner_json_type }
-            };
+        _ => {
+            quote! { "type": "object" }
         }
-        return quote! { "type": "array" };
-    }
-
-    // Handle Option<T> types
-    if type_name == "Option" {
-        if let PathArguments::AngleBracketed(args) = &segment.arguments
-            && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
-        {
-            let inner_json_type = rust_type_to_json_schema(inner_type);
-            // For Option, we return the inner type (nullable is handled separately)
-            return inner_json_type;
-        }
-        return quote! { "type": "object" };
-    }
-
-    // Handle primitive types
-    match type_name.as_str() {
-        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128"
-        | "usize" => quote! { "type": "integer" },
-        "f32" | "f64" => quote! { "type": "number" },
-        "String" | "str" | "Cow" => quote! { "type": "string" },
-        "bool" => quote! { "type": "boolean" },
-        _ => quote! { "type": "object" },
     }
 }
 
-/// Main entry point for the `#[tool]` macro expansion.
-pub(crate) fn expand_tool(args: ToolMacroArgs, input_fn: ItemFn) -> syn::Result<TokenStream> {
+/// Check if a type is Option<T>
+fn is_option_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.first() {
+            return segment.ident == "Option";
+        }
+    }
+    false
+}
+
+/// Main implementation of the tool macro.
+pub fn tool_impl(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as ToolArgs);
+    let input_fn = parse_macro_input!(input as ItemFn);
+
+    // Extract function details
     let fn_name = &input_fn.sig.ident;
     let fn_name_str = fn_name.to_string();
-    let fn_span = input_fn.sig.ident.span();
     let is_async = input_fn.sig.asyncness.is_some();
+    let fn_visibility = &input_fn.vis;
 
-    // Extract return type information
-    let return_info = extract_result_types(&input_fn.sig.output)?;
+    // Extract return type
+    let return_type = &input_fn.sig.output;
+    let (output_type, error_type) = extract_result_types(return_type);
 
-    // Derive base name from function name (PascalCase)
-    let base_name = fn_name_str.to_case(Case::Pascal);
-
-    // Generate struct names with clear, predictable suffixes:
-    // - {Base}Tool: The tool struct
-    // - {Base}Args: The arguments struct
-    // - {BASE}_TOOL: The static instance
-    let struct_name = format_ident!("{}Tool", base_name);
-    let args_struct_name = format_ident!("{}Args", base_name);
-    let static_name = format_ident!("{}_TOOL", base_name.to_case(Case::UpperSnake));
-
-    // Tool name for LLM (defaults to function name if not specified)
-    let tool_name_str = args.name.clone().unwrap_or_else(|| fn_name_str.clone());
-
-    // Extract parameter information
-    let params = extract_params(input_fn.sig.inputs.iter(), &args.param_descriptions);
-    let param_names: Vec<_> = params.iter().map(|p| p.name).collect();
-    let param_types: Vec<_> = params.iter().map(|p| p.ty).collect();
-    let param_descriptions: Vec<_> = params.iter().map(|p| &p.description).collect();
-    let json_types: Vec<_> = params.iter().map(|p| &p.json_type).collect();
+    // Generate struct name (PascalCase)
+    let struct_name = format_ident!("{}", fn_name_str.to_case(Case::Pascal));
+    let params_struct_name = format_ident!("{}Args", struct_name);
+    let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
     // Generate description
-    let tool_description = match args.description {
+    let tool_description = match &args.description {
         Some(desc) => quote! { #desc.to_string() },
-        None => quote! { format!("Function to {}", Self::NAME) },
+        None => quote! { format!("Tool function: {}", #fn_name_str) },
     };
 
-    let required_args = &args.required;
+    // Extract parameters
+    let mut param_names = Vec::new();
+    let mut param_types = Vec::new();
+    let mut param_descriptions = Vec::new();
+    let mut json_types = Vec::new();
+    let mut required_params = Vec::new();
 
-    // Generate the call implementation based on async/sync
+    for arg in &input_fn.sig.inputs {
+        if let FnArg::Typed(pat_type) = arg {
+            if let Pat::Ident(param_ident) = &*pat_type.pat {
+                let param_name = &param_ident.ident;
+                let param_name_str = param_name.to_string();
+                let ty = &*pat_type.ty;
+
+                let description = args
+                    .param_descriptions
+                    .get(&param_name_str)
+                    .cloned()
+                    .unwrap_or_else(|| format!("Parameter {param_name_str}"));
+
+                // Determine if required (not Option and not in explicit required list override)
+                let is_required = !is_option_type(ty) || args.required.contains(&param_name_str);
+
+                if is_required {
+                    required_params.push(param_name_str.clone());
+                }
+
+                param_names.push(param_name.clone());
+                param_types.push(ty.clone());
+                param_descriptions.push(description);
+                json_types.push(get_json_type(ty));
+            }
+        }
+    }
+
+    // Generate call implementation
     let call_impl = if is_async {
         quote! {
-            async fn call(&self, args: Self::Args) -> ::core::result::Result<Self::Output, Self::Error> {
+            async fn call(
+                &self,
+                args: Self::Args,
+            ) -> ::std::result::Result<Self::Output, Self::Error> {
                 #fn_name(#(args.#param_names,)*).await
             }
         }
     } else {
         quote! {
-            async fn call(&self, args: Self::Args) -> ::core::result::Result<Self::Output, Self::Error> {
+            async fn call(
+                &self,
+                args: Self::Args,
+            ) -> ::std::result::Result<Self::Output, Self::Error> {
                 #fn_name(#(args.#param_names,)*)
             }
         }
     };
 
-    let output_type = &return_info.output_type;
-    let error_type = &return_info.error_type;
-
-    // Generate the expanded code with proper spans for error messages
-    let expanded = quote_spanned! {fn_span=>
-        /// Arguments struct for the tool.
-        #[derive(::serde::Deserialize)]
-        pub struct #args_struct_name {
-            #(pub #param_names: #param_types,)*
+    let expanded = quote! {
+        /// Arguments for the [`#struct_name`] tool.
+        #[derive(Debug, Clone, ::serde::Deserialize, ::serde::Serialize)]
+        #fn_visibility struct #params_struct_name {
+            #(
+                /// #param_descriptions
+                pub #param_names: #param_types,
+            )*
         }
 
         #input_fn
 
-        /// Tool struct implementing the `Tool` trait.
-        #[derive(Default)]
-        pub struct #struct_name;
+        /// Tool struct generated from function [`#fn_name`].
+        #[derive(Debug, Clone, Copy, Default)]
+        #fn_visibility struct #struct_name;
 
         impl ::machi::tool::Tool for #struct_name {
-            const NAME: &'static str = #tool_name_str;
+            const NAME: &'static str = #fn_name_str;
 
-            type Args = #args_struct_name;
+            type Args = #params_struct_name;
             type Output = #output_type;
             type Error = #error_type;
 
-            fn name(&self) -> ::std::string::String {
-                #tool_name_str.to_string()
+            fn name(&self) -> &'static str {
+                #fn_name_str
             }
 
-            async fn definition(&self, _prompt: ::std::string::String) -> ::machi::completion::ToolDefinition {
-                let parameters = ::serde_json::json!({
+            fn description(&self) -> ::std::string::String {
+                #tool_description
+            }
+
+            fn parameters_schema(&self) -> ::serde_json::Value {
+                ::serde_json::json!({
                     "type": "object",
                     "properties": {
                         #(
@@ -371,22 +301,40 @@ pub(crate) fn expand_tool(args: ToolMacroArgs, input_fn: ItemFn) -> syn::Result<
                             }
                         ),*
                     },
-                    "required": [#(#required_args),*]
-                });
-
-                ::machi::completion::ToolDefinition {
-                    name: #tool_name_str.to_string(),
-                    description: #tool_description,
-                    parameters,
-                }
+                    "required": [#(#required_params),*]
+                })
             }
 
             #call_impl
         }
 
-        /// Static instance of the tool.
-        pub static #static_name: #struct_name = #struct_name;
+        /// Static instance of the [`#struct_name`] tool.
+        #fn_visibility static #static_name: #struct_name = #struct_name;
     };
 
-    Ok(expanded)
+    TokenStream::from(expanded)
+}
+
+/// Extract Output and Error types from Result<T, E>.
+fn extract_result_types(return_type: &ReturnType) -> (TokenStream2, TokenStream2) {
+    match return_type {
+        ReturnType::Type(_, ty) => {
+            if let Type::Path(type_path) = &**ty {
+                if let Some(last_segment) = type_path.path.segments.last() {
+                    if last_segment.ident == "Result" {
+                        if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                            if args.args.len() == 2 {
+                                let output = args.args.first().expect("Expected output type");
+                                let error = args.args.last().expect("Expected error type");
+                                return (quote!(#output), quote!(#error));
+                            }
+                        }
+                    }
+                }
+            }
+            // If not a Result, wrap in Result with default error
+            (quote!(#ty), quote!(::machi::tool::ToolError))
+        }
+        ReturnType::Default => (quote!(()), quote!(::machi::tool::ToolError)),
+    }
 }

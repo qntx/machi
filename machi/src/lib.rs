@@ -1,35 +1,58 @@
-#![cfg_attr(docsrs, feature(doc_cfg))]
-#![allow(tail_expr_drop_order)]
-//! Machi is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
+//! Machi - A Rust implementation of smolagents
 //!
-extern crate self as machi;
+//! This crate provides a lightweight, ergonomic framework for building AI agents
+//! that can use tools and interact with language models.
+//!
+//! # Quick Start
+//!
+//! ```rust,ignore
+//! use machi::prelude::*;
+//!
+//! #[tool(description = "Add two numbers")]
+//! async fn add(a: i32, b: i32) -> Result<i32, ToolError> {
+//!     Ok(a + b)
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let model = OpenAIModel::new("gpt-4");
+//!     let agent = ToolCallingAgent::builder()
+//!         .model(model)
+//!         .tools(vec![Box::new(Add)])
+//!         .build();
+//!
+//!     let result = agent.run("What is 2 + 3?").await;
+//! }
+//! ```
 
 pub mod agent;
-pub mod client;
-pub mod completion;
-pub mod core;
-pub mod embedding;
-pub mod extract;
-pub mod http;
-pub mod loader;
-pub mod modalities;
-pub mod prelude;
-pub mod providers;
-pub mod store;
-pub mod telemetry;
+pub mod callback;
+pub mod error;
+pub mod memory;
+pub mod message;
+pub mod model;
+pub mod prompts;
 pub mod tool;
+pub mod tools;
 
-#[cfg(feature = "rmcp")]
-#[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-pub mod mcp;
+/// Prelude module for convenient imports.
+pub mod prelude {
+    pub use crate::agent::{Agent, AgentConfig, CodeAgent, RunResult, ToolCallingAgent};
+    pub use crate::callback::{CallbackManager, StepEvent};
+    pub use crate::error::{AgentError, Result};
+    pub use crate::memory::{
+        ActionStep, AgentMemory, MemoryStep, PlanningStep, TaskStep, TokenUsage, ToolCall,
+    };
+    pub use crate::message::{ChatMessage, MessageContent, MessageRole};
+    pub use crate::model::{AnthropicModel, GenerateOptions, Model, ModelResponse, OpenAIModel};
+    pub use crate::prompts::PromptTemplates;
+    pub use crate::tool::{BoxedTool, DynTool, Tool, ToolBox, ToolDefinition, ToolError};
+    pub use crate::tools::{FinalAnswerTool, UserInputTool, VisitWebpageTool, WebSearchTool};
 
-#[cfg(feature = "audio")]
-pub use modalities::audio::generation as audio_generation;
-#[cfg(feature = "image")]
-pub use modalities::image::ImageGenerationError;
-#[cfg(feature = "image")]
-pub use modalities::image::generation as image_generation;
+    // Re-export derive macro
+    pub use machi_derive::tool;
+}
 
-#[cfg(feature = "derive")]
-#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use machi_derive::Embed;
+// Re-export commonly used items at crate root
+pub use error::{AgentError, Result};
+pub use machi_derive::tool;

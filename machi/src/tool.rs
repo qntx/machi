@@ -1,0 +1,301 @@
+//! Tool trait and utilities for defining agent tools.
+//!
+//! Tools are the primary way agents interact with the world. Each tool
+//! represents a specific capability that an agent can invoke.
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::fmt;
+
+/// Error type for tool execution failures.
+#[derive(Debug, Clone)]
+pub enum ToolError {
+    /// Error during tool execution.
+    ExecutionError(String),
+    /// Invalid arguments provided to the tool.
+    InvalidArguments(String),
+    /// Tool not found.
+    NotFound(String),
+    /// Tool is not initialized.
+    NotInitialized,
+    /// Generic error.
+    Other(String),
+}
+
+impl fmt::Display for ToolError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ExecutionError(msg) => write!(f, "Execution error: {msg}"),
+            Self::InvalidArguments(msg) => write!(f, "Invalid arguments: {msg}"),
+            Self::NotFound(name) => write!(f, "Tool not found: {name}"),
+            Self::NotInitialized => write!(f, "Tool not initialized"),
+            Self::Other(msg) => write!(f, "Tool error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for ToolError {}
+
+impl From<String> for ToolError {
+    fn from(s: String) -> Self {
+        Self::Other(s)
+    }
+}
+
+impl From<&str> for ToolError {
+    fn from(s: &str) -> Self {
+        Self::Other(s.to_string())
+    }
+}
+
+impl From<serde_json::Error> for ToolError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::InvalidArguments(err.to_string())
+    }
+}
+
+/// Definition of a tool for LLM function calling.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    /// Name of the tool.
+    pub name: String,
+    /// Description of what the tool does.
+    pub description: String,
+    /// JSON schema for the tool's parameters.
+    pub parameters: Value,
+}
+
+impl ToolDefinition {
+    /// Create a new tool definition.
+    #[must_use]
+    pub fn new(name: impl Into<String>, description: impl Into<String>, parameters: Value) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            parameters,
+        }
+    }
+
+    /// Convert to OpenAI function calling format.
+    #[must_use]
+    pub fn to_openai_format(&self) -> Value {
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters
+            }
+        })
+    }
+}
+
+/// The core trait for all tools that agents can use.
+///
+/// Tools encapsulate specific functionality that agents can invoke.
+/// Each tool has a name, description, and can be called with typed arguments.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use machi::tool::{Tool, ToolError};
+/// use async_trait::async_trait;
+///
+/// #[derive(Default)]
+/// struct AddTool;
+///
+/// #[async_trait]
+/// impl Tool for AddTool {
+///     const NAME: &'static str = "add";
+///     type Args = AddArgs;
+///     type Output = i32;
+///     type Error = ToolError;
+///
+///     fn name(&self) -> &'static str { Self::NAME }
+///     fn description(&self) -> String { "Add two numbers".to_string() }
+///     fn parameters_schema(&self) -> serde_json::Value {
+///         serde_json::json!({
+///             "type": "object",
+///             "properties": {
+///                 "a": { "type": "integer" },
+///                 "b": { "type": "integer" }
+///             },
+///             "required": ["a", "b"]
+///         })
+///     }
+///
+///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+///         Ok(args.a + args.b)
+///     }
+/// }
+/// ```
+#[async_trait]
+pub trait Tool: Send + Sync {
+    /// Static name of the tool.
+    const NAME: &'static str;
+
+    /// Arguments type for the tool.
+    type Args: for<'de> Deserialize<'de> + Send;
+
+    /// Output type of the tool.
+    type Output: Serialize + Send;
+
+    /// Error type for tool execution.
+    type Error: Into<ToolError> + Send;
+
+    /// Get the name of the tool.
+    fn name(&self) -> &'static str;
+
+    /// Get the description of the tool.
+    fn description(&self) -> String;
+
+    /// Get the JSON schema for the tool's parameters.
+    fn parameters_schema(&self) -> Value;
+
+    /// Execute the tool with the given arguments.
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error>;
+
+    /// Get the tool definition for LLM function calling.
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: self.name().to_string(),
+            description: self.description(),
+            parameters: self.parameters_schema(),
+        }
+    }
+
+    /// Call the tool with JSON arguments and return JSON output.
+    async fn call_json(&self, args: Value) -> Result<Value, ToolError>
+    where
+        Self::Output: 'static,
+    {
+        let typed_args: Self::Args =
+            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+
+        let result = self.call(typed_args).await.map_err(Into::into)?;
+
+        serde_json::to_value(result).map_err(|e| ToolError::ExecutionError(e.to_string()))
+    }
+}
+
+/// A boxed dynamic tool that can be used in collections.
+pub type BoxedTool = Box<dyn DynTool>;
+
+/// Object-safe version of the Tool trait for dynamic dispatch.
+#[async_trait]
+pub trait DynTool: Send + Sync {
+    /// Get the name of the tool.
+    fn name(&self) -> &'static str;
+
+    /// Get the description of the tool.
+    fn description(&self) -> String;
+
+    /// Get the tool definition.
+    fn definition(&self) -> ToolDefinition;
+
+    /// Call the tool with JSON arguments.
+    async fn call_json(&self, args: Value) -> Result<Value, ToolError>;
+}
+
+#[async_trait]
+impl<T: Tool + 'static> DynTool for T
+where
+    T::Output: 'static,
+{
+    fn name(&self) -> &'static str {
+        Tool::name(self)
+    }
+
+    fn description(&self) -> String {
+        Tool::description(self)
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        Tool::definition(self)
+    }
+
+    async fn call_json(&self, args: Value) -> Result<Value, ToolError> {
+        Tool::call_json(self, args).await
+    }
+}
+
+/// A collection of tools that can be used by an agent.
+#[derive(Default)]
+pub struct ToolBox {
+    tools: std::collections::HashMap<String, BoxedTool>,
+}
+
+impl ToolBox {
+    /// Create a new empty toolbox.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a tool to the toolbox.
+    pub fn add<T: Tool + 'static>(&mut self, tool: T)
+    where
+        T::Output: 'static,
+    {
+        self.tools.insert(tool.name().to_string(), Box::new(tool));
+    }
+
+    /// Add a boxed tool to the toolbox.
+    pub fn add_boxed(&mut self, tool: BoxedTool) {
+        self.tools.insert(tool.name().to_string(), tool);
+    }
+
+    /// Get a tool by name.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&BoxedTool> {
+        self.tools.get(name)
+    }
+
+    /// Get all tool definitions.
+    #[must_use]
+    pub fn definitions(&self) -> Vec<ToolDefinition> {
+        self.tools.values().map(|t| t.definition()).collect()
+    }
+
+    /// Get the names of all tools.
+    #[must_use]
+    pub fn names(&self) -> Vec<&str> {
+        self.tools.values().map(|t| t.name()).collect()
+    }
+
+    /// Check if the toolbox contains a tool with the given name.
+    #[must_use]
+    pub fn contains(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+
+    /// Get the number of tools in the toolbox.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.tools.len()
+    }
+
+    /// Check if the toolbox is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tools.is_empty()
+    }
+
+    /// Call a tool by name with JSON arguments.
+    pub async fn call(&self, name: &str, args: Value) -> Result<Value, ToolError> {
+        let tool = self
+            .tools
+            .get(name)
+            .ok_or_else(|| ToolError::NotFound(name.to_string()))?;
+        tool.call_json(args).await
+    }
+}
+
+impl fmt::Debug for ToolBox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ToolBox")
+            .field("tools", &self.names())
+            .finish()
+    }
+}

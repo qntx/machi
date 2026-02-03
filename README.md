@@ -5,13 +5,6 @@
 
 A Web3-native AI Agent Framework with embedded wallet capabilities.
 
-## Features
-
-- **Native Wallet Identity**: Every agent has a built-in HD wallet (powered by [kobe](https://crates.io/crates/kobe))
-- **Multi-chain Support**: Ethereum, Solana, Bitcoin
-- **Flexible LLM Backends**: rig, OpenAI, and more
-- **Policy Control**: Fine-grained control over autonomous agent actions
-
 ## License
 
 This project is licensed under either of the following licenses, at your option:

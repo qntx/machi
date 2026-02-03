@@ -1,129 +1,106 @@
 [workspace]
-members = ["machi", "machi-cli", "machi-derive", "machi-integrations"]
+members = ["machi", "machi-cli", "machi-derive"]
 default-members = ["machi"]
 resolver = "3"
 
 [workspace.package]
-version = "0.3.1"
+version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/pyroth/machi"
 
 [workspace.dependencies]
-machi = { version = "0.3.1", path = "machi" }
-machi-derive = { version = "0.3.1", path = "machi-derive" }
-machi-integrations = { version = "0.3.1", path = "machi-integrations" }
-
-# A-F
 anyhow = "1.0"
-as-any = "0.3"
-assert_fs = "1.1"
-async-stream = "0.3"
-base64 = "0.22"
-bytes = "1.10"
-convert_case = "0.10"
-deluxe = { version = "0.5", features = ["full"] }
-epub = "2.1"
-eventsource-stream = "0.2"
-fastrand = "2.3"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+convert_case = "0.11.0"
 futures = "0.3"
-futures-timer = "3.0"
-glob = "0.3"
-
-# H-M
-hyper-util = { version = "0.1", features = ["tokio", "server-auto", "service"] }
-http = "1.3"
-indoc = "2.0"
-lopdf = "0.39"
-mime = "0.3"
-mime_guess = "2.0"
-
-# O-R
-ordered-float = "5.1"
-pin-project-lite = "0.2"
-proc-macro2 = { version = "1.0", features = ["proc-macro"] }
-quick-xml = "0.39"
-quote = "1.0"
-rayon = "1.10"
-reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
-reqwest-middleware = { version = "0.5", features = ["json", "multipart", "charset", "http2"] }
-rmcp = { version = "0.14", features = ["client", "server", "transport-streamable-http-server", "transport-streamable-http-server-session", "transport-streamable-http-client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
-
-# S
-schemars = "1.2"
+machi = { version = "0.1.0", path = "machi" }
+machi-derive = { version = "0.1.0", path = "machi-derive" }
+regex = "1.11"
+reqwest = { version = "0.13.1", features = ["json", "stream"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_path_to_error = "0.1"
-serenity = "0.12"
-syn = { version = "2.0", features = ["full"] }
-
-# T-Z
 thiserror = "2.0"
-tokio = { version = "1.49", features = ["rt", "sync"] }
+tokio = { version = "1.44", features = ["full"] }
 tokio-test = "0.4"
 tracing = "0.1"
-tracing-futures = { version = "0.2", features = ["futures-03"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-url = "2.5"
-wasm-bindgen-futures = "0.4"
+urlencoding = "2.1"
+uuid = { version = "1.16", features = ["v4", "serde"] }
+
 
 [profile.release]
-lto = true
 codegen-units = 1
+lto = true
 panic = "abort"
 strip = true
 
 [profile.dev]
-opt-level = 0
 debug = true
+opt-level = 0
 
 [profile.test]
 opt-level = 2
 
+[profile.ci]
+debug = false
+inherits = "dev"
+
+[profile.bench]
+debug = true
+inherits = "release"
+
 [workspace.lints.rust]
-unsafe_code = "warn"
-# missing_docs = "warn"
+elided_lifetimes_in_paths = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
 rust_2024_compatibility = { level = "warn", priority = -1 }
+single_use_lifetimes = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unsafe_code = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+variant_size_differences = "warn"
 
 [workspace.lints.clippy]
-correctness = { level = "deny", priority = -1 }
-suspicious = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+clone_on_ref_ptr = "warn"
 complexity = { level = "warn", priority = -1 }
-perf = { level = "warn", priority = -1 }
-style = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+dbg_macro = "warn"
+doc_markdown = "allow"
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
+expect_used = "warn"
+fn_params_excessive_bools = "allow"
+future_not_send = "allow"
+implicit_hasher = "allow"
+missing_docs_in_private_items = "warn"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
 must_use_candidate = "allow"
-return_self_not_must_use = "allow"
-too_many_lines = "allow"
-excessive_nesting = "allow"
+nursery = { level = "warn", priority = -1 }
+option_if_let_else = "allow"
+panic = "warn"
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+print_stderr = "warn"
+print_stdout = "warn"
+shadow_reuse = "warn"
+shadow_same = "warn"
+shadow_unrelated = "warn"
+significant_drop_tightening = "allow"
 similar_names = "allow"
-unused_async = "allow"
-cast_possible_truncation = "allow"
-cast_sign_loss = "allow"
-cast_precision_loss = "allow"
-needless_pass_by_value = "allow"
-items_after_statements = "allow"
-needless_continue = "allow"
-match_same_arms = "allow"
-assigning_clones = "allow"
-uninlined_format_args = "allow"
-semicolon_if_nothing_returned = "allow"
-manual_let_else = "allow"
-cast_possible_wrap = "allow"
-needless_for_each = "allow"
-unnecessary_debug_formatting = "allow"
-match_wildcard_for_single_variants = "allow"
-struct_field_names = "allow"
-default_trait_access = "allow"
-iter_without_into_iter = "allow"
-single_match_else = "allow"
-explicit_iter_loop = "allow"
-map_unwrap_or = "allow"
-redundant_closure_for_method_calls = "allow"
-explicit_deref_methods = "allow"
-unnecessary_semicolon = "allow"
-filter_map_next = "allow"
-doc_markdown = "allow"
+struct_excessive_bools = "allow"
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+todo = "warn"
+too_many_lines = "allow"
+unimplemented = "warn"
+unwrap_in_result = "warn"
+unwrap_used = "warn"

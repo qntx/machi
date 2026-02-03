@@ -3,19 +3,23 @@ name = "machi-derive"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Derive macros for machi - AI Agent Framework"
 repository.workspace = true
+description = "Procedural macros for machi AI agents framework"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-convert_case.workspace = true
-deluxe.workspace = true
-proc-macro2.workspace = true
-quote.workspace = true
-serde_json.workspace = true
-syn.workspace = true
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
+convert_case = "0.7"
+
+[dev-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.44", features = ["full"] }
+async-trait = "0.1"
 
 [lints]
 workspace = true

@@ -2,20 +2,10 @@
 name = "machi-cli"
 version.workspace = true
 edition.workspace = true
-description = "CLI tools for Machi AI Agent Framework"
 license.workspace = true
-readme = "../README.md"
 repository.workspace = true
-keywords = ["agent", "ai", "cli", "chatbot"]
-categories = ["command-line-utilities", "asynchronous"]
 
 [dependencies]
-anyhow.workspace = true
-clap = { version = "4.5", features = ["derive", "env"] }
-futures.workspace = true
-machi = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true

@@ -10,16 +10,17 @@ description = "Procedural macros for machi AI agents framework"
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
-convert_case = "0.7"
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+convert_case.workspace = true
+darling.workspace = true
 
 [dev-dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tokio = { version = "1.44", features = ["full"] }
-async-trait = "0.1"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
 
 [lints]
 workspace = true

@@ -7,7 +7,7 @@ use crate::error::{AgentError, Result};
 use crate::memory::{
     ActionStep, AgentMemory, FinalAnswerStep, TaskStep, Timing, TokenUsage, ToolCall,
 };
-use crate::model::{GenerateOptions, Model};
+use crate::providers::common::{GenerateOptions, Model};
 use crate::tool::{BoxedTool, ToolBox, ToolDefinition};
 use crate::tools::FinalAnswerTool;
 use async_trait::async_trait;
@@ -23,7 +23,7 @@ use tracing::{debug, info, warn};
 pub struct RunResult {
     /// Final output of the agent.
     pub output: Option<Value>,
-    /// State of the run ("success" or "max_steps_error").
+    /// State of the run ("success" or "`max_steps_error`").
     pub state: String,
     /// Steps taken during the run.
     pub steps: Vec<Value>,
@@ -133,14 +133,14 @@ impl ToolCallingAgent {
             .collect();
 
         format!(
-            r#"You are a helpful AI assistant that can use tools to accomplish tasks.
+            r"You are a helpful AI assistant that can use tools to accomplish tasks.
 
 Available tools:
 {}
 
 When you need to use a tool, respond with a tool call. When you have the final answer, use the 'final_answer' tool to provide it.
 
-Think step by step about what you need to do to accomplish the task."#,
+Think step by step about what you need to do to accomplish the task.",
             tool_descriptions.join("\n")
         )
     }
@@ -504,7 +504,7 @@ impl CodeAgent {
             .collect();
 
         format!(
-            r#"You are a helpful AI assistant that writes Python code to accomplish tasks.
+            r"You are a helpful AI assistant that writes Python code to accomplish tasks.
 
 Available tools (as Python functions):
 ```python
@@ -523,7 +523,7 @@ Thought: <your reasoning>
 Code:
 ```python
 <your code>
-```"#,
+```",
             tool_descriptions.join("\n\n")
         )
     }
@@ -533,7 +533,7 @@ Code:
         if let Some(props) = params.get("properties").and_then(|p| p.as_object()) {
             props
                 .keys()
-                .map(|k| k.as_str())
+                .map(String::as_str)
                 .collect::<Vec<_>>()
                 .join(", ")
         } else {
@@ -573,12 +573,11 @@ Code:
                 let answer_pattern: Regex = Regex::new(r#"final_answer\([\"'](.+?)[\"']\)"#)
                     .ok()
                     .unwrap();
-                if let Some(captures) = answer_pattern.captures(&code) {
-                    if let Some(answer) = captures.get(1) {
+                if let Some(captures) = answer_pattern.captures(&code)
+                    && let Some(answer) = captures.get(1) {
                         action_step.is_final_answer = true;
                         return Ok(Some(Value::String(answer.as_str().to_string())));
                     }
-                }
             }
 
             // For now, just record the code as observation

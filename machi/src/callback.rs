@@ -45,16 +45,16 @@ impl fmt::Display for StepEvent {
         match self {
             Self::TaskStarted(task) => write!(f, "Task started: {}", task.task),
             Self::PlanningComplete(plan) => write!(f, "Planning complete: {}", plan.plan),
-            Self::ActionStarting { step_number } => write!(f, "Starting step {}", step_number),
+            Self::ActionStarting { step_number } => write!(f, "Starting step {step_number}"),
             Self::ActionComplete(step) => {
                 write!(f, "Step {} complete", step.step_number)?;
                 if let Some(obs) = &step.observations {
-                    write!(f, " - Observations: {}", obs)?;
+                    write!(f, " - Observations: {obs}")?;
                 }
                 Ok(())
             }
             Self::StepError { step_number, error } => {
-                write!(f, "Step {} error: {}", step_number, error)
+                write!(f, "Step {step_number} error: {error}")
             }
             Self::AgentComplete {
                 success,
@@ -121,13 +121,13 @@ impl fmt::Debug for CallbackManager {
 
 /// A simple logging callback that prints events to stdout.
 pub fn logging_callback(event: &StepEvent) {
-    println!("[Agent] {}", event);
+    println!("[Agent] {event}");
 }
 
 /// Create a callback that logs events with a custom prefix.
 pub fn prefixed_logging_callback(prefix: String) -> impl Fn(&StepEvent) + Send + Sync {
     move |event| {
-        println!("[{}] {}", prefix, event);
+        println!("[{prefix}] {event}");
     }
 }
 

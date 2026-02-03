@@ -9,6 +9,7 @@ description = "A Rust implementation of smolagents - lightweight AI agents frame
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+bytes.workspace = true
 chrono.workspace = true
 convert_case.workspace = true
 futures.workspace = true
@@ -17,6 +18,7 @@ regex.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

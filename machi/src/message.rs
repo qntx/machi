@@ -147,7 +147,7 @@ impl ChatMessageToolCall {
 
     /// Get the arguments as a JSON value.
     #[must_use]
-    pub fn arguments(&self) -> &Value {
+    pub const fn arguments(&self) -> &Value {
         &self.function.arguments
     }
 
@@ -157,6 +157,15 @@ impl ChatMessageToolCall {
         match &self.function.arguments {
             Value::String(s) => serde_json::from_str(s),
             other => serde_json::from_value(other.clone()),
+        }
+    }
+
+    /// Get arguments as a JSON string.
+    #[must_use]
+    pub fn arguments_string(&self) -> String {
+        match &self.function.arguments {
+            Value::String(s) => s.clone(),
+            other => serde_json::to_string(other).unwrap_or_default(),
         }
     }
 }
@@ -213,7 +222,7 @@ impl ChatMessage {
 
     /// Create a new assistant message with tool calls.
     #[must_use]
-    pub fn assistant_with_tool_calls(tool_calls: Vec<ChatMessageToolCall>) -> Self {
+    pub const fn assistant_with_tool_calls(tool_calls: Vec<ChatMessageToolCall>) -> Self {
         Self {
             role: MessageRole::Assistant,
             content: None,
@@ -235,7 +244,7 @@ impl ChatMessage {
 
     /// Create a new message with multiple content items.
     #[must_use]
-    pub fn with_contents(role: MessageRole, contents: Vec<MessageContent>) -> Self {
+    pub const fn with_contents(role: MessageRole, contents: Vec<MessageContent>) -> Self {
         Self {
             role,
             content: Some(contents),
@@ -290,35 +299,43 @@ pub struct ChatMessageStreamDelta {
     pub content: Option<String>,
     /// Incremental tool calls.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCallStreamDelta>>,
+    pub tool_calls: Option<Vec<ChatMessageToolCallStreamDelta>>,
+    /// Token usage information (usually only in final delta).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_usage: Option<crate::providers::common::TokenUsage>,
 }
+
+/// Type alias for backwards compatibility.
+pub type ToolCallStreamDelta = ChatMessageToolCallStreamDelta;
 
 /// Streaming delta for tool calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallStreamDelta {
+pub struct ChatMessageToolCallStreamDelta {
     /// Index of the tool call.
-    pub index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
     /// Tool call ID (may be partial).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// Type of tool call.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
-    pub call_type: Option<String>,
+    pub r#type: Option<String>,
     /// Function information (may be partial).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub function: Option<ToolCallFunctionDelta>,
+    pub function: Option<ChatMessageToolCallFunction>,
 }
 
-/// Streaming delta for function information.
+/// Tool call function information for streaming.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallFunctionDelta {
-    /// Function name (may be partial).
+pub struct ChatMessageToolCallFunction {
+    /// Function name.
+    pub name: String,
+    /// Arguments as JSON value.
+    pub arguments: Value,
+    /// Optional description.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Arguments (may be partial JSON string).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub arguments: Option<String>,
+    pub description: Option<String>,
 }
 
 /// Aggregate streaming deltas into a complete message.
@@ -335,31 +352,29 @@ pub fn aggregate_stream_deltas(deltas: &[ChatMessageStreamDelta]) -> ChatMessage
 
         if let Some(tc_deltas) = &delta.tool_calls {
             for tc_delta in tc_deltas {
-                let entry =
-                    tool_calls
-                        .entry(tc_delta.index)
-                        .or_insert_with(|| ChatMessageToolCall {
-                            id: String::new(),
-                            call_type: "function".to_string(),
-                            function: ToolCallFunction {
-                                name: String::new(),
-                                arguments: Value::String(String::new()),
-                                description: None,
-                            },
-                        });
+                let index = tc_delta.index.unwrap_or(0);
+                let entry = tool_calls
+                    .entry(index)
+                    .or_insert_with(|| ChatMessageToolCall {
+                        id: String::new(),
+                        call_type: "function".to_string(),
+                        function: ToolCallFunction {
+                            name: String::new(),
+                            arguments: Value::String(String::new()),
+                            description: None,
+                        },
+                    });
 
                 if let Some(id) = &tc_delta.id {
                     entry.id.clone_from(id);
                 }
                 if let Some(func) = &tc_delta.function {
-                    if let Some(name) = &func.name {
-                        entry.function.name.clone_from(name);
-                    }
-                    if let Some(args) = &func.arguments {
-                        if let Value::String(s) = &mut entry.function.arguments {
-                            s.push_str(args);
+                    entry.function.name.clone_from(&func.name);
+                    // Serialize arguments to string and append
+                    if let Ok(args_str) = serde_json::to_string(&func.arguments)
+                        && let Value::String(s) = &mut entry.function.arguments {
+                            s.push_str(&args_str);
                         }
-                    }
                 }
             }
         }

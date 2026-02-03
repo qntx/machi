@@ -86,7 +86,7 @@ impl WebSearchTool {
         output
     }
 
-    /// Perform DuckDuckGo search using lite HTML interface.
+    /// Perform `DuckDuckGo` search using lite HTML interface.
     async fn search_duckduckgo(&self, query: &str) -> Result<Vec<SearchResult>, ToolError> {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -115,7 +115,7 @@ impl WebSearchTool {
         Ok(results.into_iter().take(self.max_results).collect())
     }
 
-    /// Parse DuckDuckGo Lite HTML response.
+    /// Parse `DuckDuckGo` Lite HTML response.
     fn parse_duckduckgo_html(&self, html: &str) -> Vec<SearchResult> {
         let mut results = Vec::new();
 

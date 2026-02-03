@@ -64,6 +64,13 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON schema for the tool's parameters.
     pub parameters: Value,
+    /// Output type string for LLM prompts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_type: Option<String>,
+    /// JSON schema for structured output (optional).
+    /// Used for `OpenAI`'s structured output / JSON mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
 }
 
 impl ToolDefinition {
@@ -74,10 +81,26 @@ impl ToolDefinition {
             name: name.into(),
             description: description.into(),
             parameters,
+            output_type: None,
+            output_schema: None,
         }
     }
 
-    /// Convert to OpenAI function calling format.
+    /// Set the output type.
+    #[must_use]
+    pub fn with_output_type(mut self, output_type: impl Into<String>) -> Self {
+        self.output_type = Some(output_type.into());
+        self
+    }
+
+    /// Set the output schema for structured output.
+    #[must_use]
+    pub fn with_output_schema(mut self, schema: Value) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Convert to `OpenAI` function calling format.
     #[must_use]
     pub fn to_openai_format(&self) -> Value {
         serde_json::json!({
@@ -95,41 +118,6 @@ impl ToolDefinition {
 ///
 /// Tools encapsulate specific functionality that agents can invoke.
 /// Each tool has a name, description, and can be called with typed arguments.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use machi::tool::{Tool, ToolError};
-/// use async_trait::async_trait;
-///
-/// #[derive(Default)]
-/// struct AddTool;
-///
-/// #[async_trait]
-/// impl Tool for AddTool {
-///     const NAME: &'static str = "add";
-///     type Args = AddArgs;
-///     type Output = i32;
-///     type Error = ToolError;
-///
-///     fn name(&self) -> &'static str { Self::NAME }
-///     fn description(&self) -> String { "Add two numbers".to_string() }
-///     fn parameters_schema(&self) -> serde_json::Value {
-///         serde_json::json!({
-///             "type": "object",
-///             "properties": {
-///                 "a": { "type": "integer" },
-///                 "b": { "type": "integer" }
-///             },
-///             "required": ["a", "b"]
-///         })
-///     }
-///
-///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-///         Ok(args.a + args.b)
-///     }
-/// }
-/// ```
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Static name of the tool.
@@ -153,6 +141,22 @@ pub trait Tool: Send + Sync {
     /// Get the JSON schema for the tool's parameters.
     fn parameters_schema(&self) -> Value;
 
+    /// Get the output type string for LLM prompts (e.g., "string", "integer", "object").
+    ///
+    /// This is similar to smolagents' `output_type` attribute, used for generating
+    /// tool descriptions in prompts.
+    fn output_type(&self) -> &'static str {
+        "object"
+    }
+
+    /// Get the JSON schema for structured output (optional).
+    ///
+    /// Used for `OpenAI`'s structured output / JSON mode. Returns `None` by default.
+    /// Override this to provide a schema that describes the structure of the output.
+    fn output_schema(&self) -> Option<Value> {
+        None
+    }
+
     /// Execute the tool with the given arguments.
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error>;
 
@@ -162,6 +166,8 @@ pub trait Tool: Send + Sync {
             name: self.name().to_string(),
             description: self.description(),
             parameters: self.parameters_schema(),
+            output_type: Some(self.output_type().to_string()),
+            output_schema: self.output_schema(),
         }
     }
 

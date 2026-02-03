@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::any::Any;
 
+pub use crate::providers::common::TokenUsage;
+
 /// Timing information for a step.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Timing {
@@ -45,50 +47,6 @@ impl Timing {
 impl Default for Timing {
     fn default() -> Self {
         Self::start_now()
-    }
-}
-
-/// Token usage information.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-pub struct TokenUsage {
-    /// Number of input tokens.
-    pub input_tokens: u32,
-    /// Number of output tokens.
-    pub output_tokens: u32,
-}
-
-impl TokenUsage {
-    /// Create new token usage.
-    #[must_use]
-    pub const fn new(input_tokens: u32, output_tokens: u32) -> Self {
-        Self {
-            input_tokens,
-            output_tokens,
-        }
-    }
-
-    /// Get total tokens.
-    #[must_use]
-    pub const fn total(&self) -> u32 {
-        self.input_tokens + self.output_tokens
-    }
-}
-
-impl std::ops::Add for TokenUsage {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            input_tokens: self.input_tokens + rhs.input_tokens,
-            output_tokens: self.output_tokens + rhs.output_tokens,
-        }
-    }
-}
-
-impl std::ops::AddAssign for TokenUsage {
-    fn add_assign(&mut self, rhs: Self) {
-        self.input_tokens += rhs.input_tokens;
-        self.output_tokens += rhs.output_tokens;
     }
 }
 
@@ -169,7 +127,7 @@ impl MemoryStep for TaskStep {
     fn to_value(&self) -> Value {
         serde_json::json!({
             "task": self.task,
-            "has_images": self.task_images.as_ref().map(|i| !i.is_empty()).unwrap_or(false)
+            "has_images": self.task_images.as_ref().is_some_and(|i| !i.is_empty())
         })
     }
 
@@ -222,11 +180,10 @@ impl MemoryStep for ActionStep {
         let mut messages = vec![];
 
         // Add model output
-        if let Some(output) = &self.model_output {
-            if !summary_mode {
+        if let Some(output) = &self.model_output
+            && !summary_mode {
                 messages.push(ChatMessage::assistant(output.trim()));
             }
-        }
 
         // Add tool calls
         if let Some(tool_calls) = &self.tool_calls {
@@ -390,11 +347,10 @@ impl AgentMemory {
                 if let Some(usage) = action.token_usage {
                     total += usage;
                 }
-            } else if let Some(planning) = step.as_any().downcast_ref::<PlanningStep>() {
-                if let Some(usage) = planning.token_usage {
+            } else if let Some(planning) = step.as_any().downcast_ref::<PlanningStep>()
+                && let Some(usage) = planning.token_usage {
                     total += usage;
                 }
-            }
         }
         total
     }

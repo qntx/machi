@@ -29,7 +29,7 @@ pub struct ModelResponse {
 impl ModelResponse {
     /// Create a new model response.
     #[must_use]
-    pub fn new(message: ChatMessage) -> Self {
+    pub const fn new(message: ChatMessage) -> Self {
         Self {
             message,
             token_usage: None,
@@ -39,7 +39,7 @@ impl ModelResponse {
 
     /// Set token usage.
     #[must_use]
-    pub fn with_token_usage(mut self, usage: TokenUsage) -> Self {
+    pub const fn with_token_usage(mut self, usage: TokenUsage) -> Self {
         self.token_usage = Some(usage);
         self
     }
@@ -149,6 +149,7 @@ pub trait Model: Send + Sync {
         let delta = ChatMessageStreamDelta {
             content: response.message.text_content(),
             tool_calls: None,
+            token_usage: None,
         };
         Ok(Box::pin(futures::stream::once(async move { Ok(delta) })))
     }
@@ -227,11 +228,11 @@ pub struct OpenAIModel {
 }
 
 impl OpenAIModel {
-    /// Create a new OpenAI model.
+    /// Create a new `OpenAI` model.
     ///
     /// # Panics
     ///
-    /// Panics if OPENAI_API_KEY environment variable is not set.
+    /// Panics if `OPENAI_API_KEY` environment variable is not set.
     #[must_use]
     pub fn new(model_id: impl Into<String>) -> Self {
         let api_key =
@@ -239,7 +240,7 @@ impl OpenAIModel {
         Self::with_api_key(model_id, api_key)
     }
 
-    /// Create a new OpenAI model with explicit API key.
+    /// Create a new `OpenAI` model with explicit API key.
     #[must_use]
     pub fn with_api_key(model_id: impl Into<String>, api_key: impl Into<String>) -> Self {
         Self {
@@ -273,18 +274,16 @@ impl OpenAIModel {
         if let Some(top_p) = options.top_p {
             body["top_p"] = serde_json::json!(top_p);
         }
-        if let Some(stop) = &options.stop_sequences {
-            if !stop.is_empty() && self.supports_stop_parameter() {
+        if let Some(stop) = &options.stop_sequences
+            && !stop.is_empty() && self.supports_stop_parameter() {
                 body["stop"] = serde_json::json!(stop);
             }
-        }
-        if let Some(tools) = &options.tools {
-            if !tools.is_empty() {
+        if let Some(tools) = &options.tools
+            && !tools.is_empty() {
                 let tool_defs: Vec<_> =
                     tools.iter().map(ToolDefinition::to_openai_format).collect();
                 body["tools"] = serde_json::json!(tool_defs);
             }
-        }
         if let Some(format) = &options.response_format {
             body["response_format"] = format.clone();
         }
@@ -292,7 +291,7 @@ impl OpenAIModel {
         body
     }
 
-    /// Convert ChatMessage to OpenAI API format.
+    /// Convert `ChatMessage` to `OpenAI` API format.
     fn convert_messages(&self, messages: &[ChatMessage]) -> Vec<Value> {
         messages
             .iter()
@@ -384,14 +383,10 @@ impl Model for OpenAIModel {
             tool_call_id: None,
         };
 
-        let token_usage = if let Some(usage) = json.get("usage") {
-            Some(TokenUsage {
+        let token_usage = json.get("usage").map(|usage| TokenUsage {
                 input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
                 output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0) as u32,
-            })
-        } else {
-            None
-        };
+            });
 
         Ok(ModelResponse {
             message,
@@ -421,7 +416,7 @@ impl AnthropicModel {
     ///
     /// # Panics
     ///
-    /// Panics if ANTHROPIC_API_KEY environment variable is not set.
+    /// Panics if `ANTHROPIC_API_KEY` environment variable is not set.
     #[must_use]
     pub fn new(model_id: impl Into<String>) -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY")
@@ -535,13 +530,12 @@ impl AnthropicModel {
         if let Some(top_p) = options.top_p {
             body["top_p"] = serde_json::json!(top_p);
         }
-        if let Some(stop) = &options.stop_sequences {
-            if !stop.is_empty() {
+        if let Some(stop) = &options.stop_sequences
+            && !stop.is_empty() {
                 body["stop_sequences"] = serde_json::json!(stop);
             }
-        }
-        if let Some(tools) = &options.tools {
-            if !tools.is_empty() {
+        if let Some(tools) = &options.tools
+            && !tools.is_empty() {
                 let tool_defs: Vec<Value> = tools
                     .iter()
                     .map(|t| {
@@ -554,7 +548,6 @@ impl AnthropicModel {
                     .collect();
                 body["tools"] = serde_json::json!(tool_defs);
             }
-        }
 
         body
     }

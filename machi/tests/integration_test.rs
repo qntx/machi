@@ -144,8 +144,8 @@ fn test_agent_memory() {
 
 #[test]
 fn test_callback_manager() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     let counter = Arc::new(AtomicUsize::new(0));
     let counter_clone = counter.clone();

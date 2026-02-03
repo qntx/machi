@@ -10,8 +10,6 @@ use crate::memory::{
 use crate::providers::common::{GenerateOptions, Model};
 use crate::tool::{BoxedTool, ToolBox, ToolDefinition};
 use crate::tools::FinalAnswerTool;
-use async_trait::async_trait;
-use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -60,33 +58,8 @@ impl Default for AgentConfig {
     }
 }
 
-/// The core Agent trait that all agent implementations must satisfy.
-#[async_trait]
-pub trait Agent: Send + Sync {
-    /// Run the agent with a task.
-    async fn run(&mut self, task: &str) -> Result<Value>;
-
-    /// Run the agent with a task and additional arguments.
-    async fn run_with_args(&mut self, task: &str, args: HashMap<String, Value>) -> Result<Value>;
-
-    /// Get the agent's name.
-    fn name(&self) -> Option<&str>;
-
-    /// Get the agent's description.
-    fn description(&self) -> Option<&str>;
-
-    /// Interrupt the agent's execution.
-    fn interrupt(&self);
-
-    /// Get the agent's memory.
-    fn memory(&self) -> &AgentMemory;
-
-    /// Reset the agent's memory.
-    fn reset(&mut self);
-}
-
-/// Tool-calling agent that uses LLM function calling capabilities.
-pub struct ToolCallingAgent {
+/// AI agent that uses LLM function calling to execute tasks with tools.
+pub struct Agent {
     /// The language model to use.
     model: Box<dyn Model>,
     /// Available tools.
@@ -107,20 +80,20 @@ pub struct ToolCallingAgent {
     state: HashMap<String, Value>,
 }
 
-impl std::fmt::Debug for ToolCallingAgent {
+impl std::fmt::Debug for Agent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ToolCallingAgent")
+        f.debug_struct("Agent")
             .field("config", &self.config)
             .field("tools", &self.tools)
             .finish_non_exhaustive()
     }
 }
 
-impl ToolCallingAgent {
-    /// Create a new tool-calling agent builder.
+impl Agent {
+    /// Create a new agent builder.
     #[must_use]
-    pub fn builder() -> ToolCallingAgentBuilder {
-        ToolCallingAgentBuilder::default()
+    pub fn builder() -> AgentBuilder {
+        AgentBuilder::default()
     }
 
     /// Initialize the system prompt.
@@ -217,15 +190,18 @@ Think step by step about what you need to do to accomplish the task.",
 
         Ok(None)
     }
-}
 
-#[async_trait]
-impl Agent for ToolCallingAgent {
-    async fn run(&mut self, task: &str) -> Result<Value> {
+    /// Run the agent with a task.
+    pub async fn run(&mut self, task: &str) -> Result<Value> {
         self.run_with_args(task, HashMap::new()).await
     }
 
-    async fn run_with_args(&mut self, task: &str, args: HashMap<String, Value>) -> Result<Value> {
+    /// Run the agent with a task and additional arguments.
+    pub async fn run_with_args(
+        &mut self,
+        task: &str,
+        args: HashMap<String, Value>,
+    ) -> Result<Value> {
         // Reset state
         self.memory.reset();
         self.step_number = 0;
@@ -323,23 +299,28 @@ impl Agent for ToolCallingAgent {
         final_answer.ok_or_else(|| AgentError::internal("No final answer produced"))
     }
 
-    fn name(&self) -> Option<&str> {
+    /// Get the agent's name.
+    pub fn name(&self) -> Option<&str> {
         self.config.name.as_deref()
     }
 
-    fn description(&self) -> Option<&str> {
+    /// Get the agent's description.
+    pub fn description(&self) -> Option<&str> {
         self.config.description.as_deref()
     }
 
-    fn interrupt(&self) {
+    /// Interrupt the agent's execution.
+    pub fn interrupt(&self) {
         self.interrupt_flag.store(true, Ordering::SeqCst);
     }
 
-    fn memory(&self) -> &AgentMemory {
+    /// Get the agent's memory.
+    pub const fn memory(&self) -> &AgentMemory {
         &self.memory
     }
 
-    fn reset(&mut self) {
+    /// Reset the agent's state and memory.
+    pub fn reset(&mut self) {
         self.memory.reset();
         self.step_number = 0;
         self.current_task = None;
@@ -347,17 +328,17 @@ impl Agent for ToolCallingAgent {
     }
 }
 
-/// Builder for `ToolCallingAgent`.
+/// Builder for [`Agent`].
 #[derive(Default)]
-pub struct ToolCallingAgentBuilder {
+pub struct AgentBuilder {
     model: Option<Box<dyn Model>>,
     tools: Vec<BoxedTool>,
     config: AgentConfig,
 }
 
-impl std::fmt::Debug for ToolCallingAgentBuilder {
+impl std::fmt::Debug for AgentBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ToolCallingAgentBuilder")
+        f.debug_struct("AgentBuilder")
             .field("has_model", &self.model.is_some())
             .field("tools_count", &self.tools.len())
             .field("config", &self.config)
@@ -365,7 +346,7 @@ impl std::fmt::Debug for ToolCallingAgentBuilder {
     }
 }
 
-impl ToolCallingAgentBuilder {
+impl AgentBuilder {
     /// Set the model.
     #[must_use]
     pub fn model<M: Model + 'static>(mut self, model: M) -> Self {
@@ -421,7 +402,7 @@ impl ToolCallingAgentBuilder {
     ///
     /// Panics if no model is provided.
     #[must_use]
-    pub fn build(self) -> ToolCallingAgent {
+    pub fn build(self) -> Agent {
         let model = self.model.expect("Model is required");
         let mut toolbox = ToolBox::new();
 
@@ -433,7 +414,7 @@ impl ToolCallingAgentBuilder {
         // Add final answer tool
         toolbox.add(FinalAnswerTool);
 
-        ToolCallingAgent {
+        Agent {
             model,
             tools: toolbox,
             config: self.config,
@@ -443,353 +424,6 @@ impl ToolCallingAgentBuilder {
             step_number: 0,
             current_task: None,
             state: HashMap::new(),
-        }
-    }
-}
-
-/// Code agent that executes Python-like code blocks.
-///
-/// This is a simplified version; full Python execution would require
-/// integration with a Python runtime.
-pub struct CodeAgent {
-    /// The language model to use.
-    model: Box<dyn Model>,
-    /// Available tools.
-    tools: ToolBox,
-    /// Agent configuration.
-    config: AgentConfig,
-    /// Agent memory.
-    memory: AgentMemory,
-    /// System prompt.
-    system_prompt: String,
-    /// Interrupt flag.
-    interrupt_flag: Arc<AtomicBool>,
-    /// Current step number.
-    step_number: usize,
-    /// Current task.
-    current_task: Option<String>,
-    /// Authorized imports for code execution.
-    pub authorized_imports: Vec<String>,
-}
-
-impl std::fmt::Debug for CodeAgent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CodeAgent")
-            .field("config", &self.config)
-            .field("tools", &self.tools)
-            .field("authorized_imports", &self.authorized_imports)
-            .finish_non_exhaustive()
-    }
-}
-
-impl CodeAgent {
-    /// Create a new code agent builder.
-    #[must_use]
-    pub fn builder() -> CodeAgentBuilder {
-        CodeAgentBuilder::default()
-    }
-
-    /// Initialize the system prompt for code agent.
-    fn initialize_system_prompt(&self) -> String {
-        let tool_descriptions: Vec<String> = self
-            .tools
-            .definitions()
-            .iter()
-            .map(|t| {
-                format!(
-                    "def {}({}) -> {}:\n    \"\"\"{}\"\"\"",
-                    t.name,
-                    Self::format_params(&t.parameters),
-                    "Any",
-                    t.description
-                )
-            })
-            .collect();
-
-        format!(
-            r"You are a helpful AI assistant that writes Python code to accomplish tasks.
-
-Available tools (as Python functions):
-```python
-{}
-```
-
-When you need to accomplish a task:
-1. Think about what you need to do
-2. Write Python code using the available tools
-3. Use `final_answer(answer)` to provide your final answer
-
-Your code will be executed in a sandboxed environment. Only use the provided tools.
-
-Format your response as:
-Thought: <your reasoning>
-Code:
-```python
-<your code>
-```",
-            tool_descriptions.join("\n\n")
-        )
-    }
-
-    /// Format parameters for display.
-    fn format_params(params: &Value) -> String {
-        if let Some(props) = params.get("properties").and_then(|p| p.as_object()) {
-            props
-                .keys()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-                .join(", ")
-        } else {
-            String::new()
-        }
-    }
-
-    /// Extract code from model output.
-    fn extract_code(output: &str) -> Option<String> {
-        // Look for code blocks
-        let code_pattern: Regex = Regex::new(r"```(?:python)?\s*\n([\s\S]*?)\n```").ok()?;
-        let captures = code_pattern.captures(output)?;
-        captures.get(1).map(|m| m.as_str().to_string())
-    }
-
-    /// Execute a step.
-    async fn step(&self, action_step: &mut ActionStep) -> Result<Option<Value>> {
-        let messages = self.memory.to_messages(false);
-        action_step.model_input_messages = Some(messages.clone());
-
-        let options = GenerateOptions::new();
-        let response = self.model.generate(messages, options).await?;
-
-        action_step.model_output_message = Some(response.message.clone());
-        action_step.token_usage = response.token_usage;
-
-        let output = response.message.text_content().unwrap_or_default();
-        action_step.model_output = Some(output.clone());
-
-        // Extract code
-        if let Some(code) = Self::extract_code(&output) {
-            action_step.code_action = Some(code.clone());
-
-            // Check for final_answer call
-            if code.contains("final_answer(") {
-                // Simple extraction of final answer
-                let answer_pattern: Regex = Regex::new(r#"final_answer\([\"'](.+?)[\"']\)"#)
-                    .expect("Invalid regex pattern");
-                if let Some(captures) = answer_pattern.captures(&code)
-                    && let Some(answer) = captures.get(1)
-                {
-                    action_step.is_final_answer = true;
-                    return Ok(Some(Value::String(answer.as_str().to_string())));
-                }
-            }
-
-            // For now, just record the code as observation
-            action_step.observations = Some(format!("Code executed:\n{code}"));
-        }
-
-        Ok(None)
-    }
-}
-
-#[async_trait]
-impl Agent for CodeAgent {
-    async fn run(&mut self, task: &str) -> Result<Value> {
-        self.run_with_args(task, HashMap::new()).await
-    }
-
-    async fn run_with_args(&mut self, task: &str, args: HashMap<String, Value>) -> Result<Value> {
-        self.memory.reset();
-        self.step_number = 0;
-        self.interrupt_flag.store(false, Ordering::SeqCst);
-
-        self.system_prompt = self.initialize_system_prompt();
-        self.memory
-            .system_prompt
-            .system_prompt
-            .clone_from(&self.system_prompt);
-
-        let task_with_args = if args.is_empty() {
-            task.to_string()
-        } else {
-            format!(
-                "{}\n\nVariables available:\n{}",
-                task,
-                serde_json::to_string_pretty(&args).unwrap_or_default()
-            )
-        };
-        self.current_task = Some(task_with_args.clone());
-
-        self.memory.add_step(TaskStep {
-            task: task_with_args,
-            task_images: None,
-        });
-
-        info!("Starting code agent run");
-
-        let mut final_answer: Option<Value> = None;
-
-        while self.step_number < self.config.max_steps {
-            if self.interrupt_flag.load(Ordering::SeqCst) {
-                return Err(AgentError::Interrupted);
-            }
-
-            self.step_number += 1;
-            info!("Executing step {}", self.step_number);
-
-            let mut action_step = ActionStep {
-                step_number: self.step_number,
-                timing: Timing::start_now(),
-                ..Default::default()
-            };
-
-            match self.step(&mut action_step).await {
-                Ok(Some(answer)) => {
-                    action_step.timing.complete();
-                    self.memory.add_step(action_step);
-                    final_answer = Some(answer);
-                    break;
-                }
-                Ok(None) => {
-                    action_step.timing.complete();
-                    self.memory.add_step(action_step);
-                }
-                Err(e) => {
-                    action_step.error = Some(e.to_string());
-                    action_step.timing.complete();
-                    self.memory.add_step(action_step);
-                    warn!("Step {} error: {}", self.step_number, e);
-                }
-            }
-        }
-
-        if final_answer.is_none() {
-            return Err(AgentError::max_steps(
-                self.step_number,
-                self.config.max_steps,
-            ));
-        }
-
-        if let Some(ref answer) = final_answer {
-            self.memory.add_step(FinalAnswerStep {
-                output: answer.clone(),
-            });
-        }
-
-        final_answer.ok_or_else(|| AgentError::internal("No final answer"))
-    }
-
-    fn name(&self) -> Option<&str> {
-        self.config.name.as_deref()
-    }
-
-    fn description(&self) -> Option<&str> {
-        self.config.description.as_deref()
-    }
-
-    fn interrupt(&self) {
-        self.interrupt_flag.store(true, Ordering::SeqCst);
-    }
-
-    fn memory(&self) -> &AgentMemory {
-        &self.memory
-    }
-
-    fn reset(&mut self) {
-        self.memory.reset();
-        self.step_number = 0;
-        self.current_task = None;
-    }
-}
-
-/// Builder for `CodeAgent`.
-#[derive(Default)]
-pub struct CodeAgentBuilder {
-    model: Option<Box<dyn Model>>,
-    tools: Vec<BoxedTool>,
-    config: AgentConfig,
-    authorized_imports: Vec<String>,
-}
-
-impl std::fmt::Debug for CodeAgentBuilder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CodeAgentBuilder")
-            .field("has_model", &self.model.is_some())
-            .field("tools_count", &self.tools.len())
-            .field("config", &self.config)
-            .field("authorized_imports", &self.authorized_imports)
-            .finish()
-    }
-}
-
-impl CodeAgentBuilder {
-    /// Set the model.
-    #[must_use]
-    pub fn model<M: Model + 'static>(mut self, model: M) -> Self {
-        self.model = Some(Box::new(model));
-        self
-    }
-
-    /// Add a tool.
-    #[must_use]
-    pub fn tool(mut self, tool: BoxedTool) -> Self {
-        self.tools.push(tool);
-        self
-    }
-
-    /// Add multiple tools.
-    #[must_use]
-    pub fn tools(mut self, tools: Vec<BoxedTool>) -> Self {
-        self.tools.extend(tools);
-        self
-    }
-
-    /// Set max steps.
-    #[must_use]
-    pub const fn max_steps(mut self, max: usize) -> Self {
-        self.config.max_steps = max;
-        self
-    }
-
-    /// Set agent name.
-    #[must_use]
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.config.name = Some(name.into());
-        self
-    }
-
-    /// Set authorized imports.
-    #[must_use]
-    pub fn authorized_imports(mut self, imports: Vec<String>) -> Self {
-        self.authorized_imports = imports;
-        self
-    }
-
-    /// Build the agent.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no model is provided.
-    #[must_use]
-    pub fn build(self) -> CodeAgent {
-        let model = self.model.expect("Model is required");
-        let mut toolbox = ToolBox::new();
-
-        for tool in self.tools {
-            toolbox.add_boxed(tool);
-        }
-
-        toolbox.add(FinalAnswerTool);
-
-        CodeAgent {
-            model,
-            tools: toolbox,
-            config: self.config,
-            memory: AgentMemory::default(),
-            system_prompt: String::new(),
-            interrupt_flag: Arc::new(AtomicBool::new(false)),
-            step_number: 0,
-            current_task: None,
-            authorized_imports: self.authorized_imports,
         }
     }
 }

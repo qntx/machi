@@ -27,7 +27,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let model = OllamaClient::new().completion_model("qwen3");
 
-    let mut agent = ToolCallingAgent::builder()
+    let mut agent = Agent::builder()
         .model(model)
         .tool(Box::new(Add))
         .tool(Box::new(Multiply))

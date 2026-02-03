@@ -84,19 +84,19 @@ mod tests {
         let r1 = model
             .generate(messages.clone(), options.clone())
             .await
-            .unwrap();
+            .expect("generate should succeed");
         assert_eq!(r1.text(), Some("first".to_string()));
 
         let r2 = model
             .generate(messages.clone(), options.clone())
             .await
-            .unwrap();
+            .expect("generate should succeed");
         assert_eq!(r2.text(), Some("second".to_string()));
 
         let r3 = model
             .generate(messages.clone(), options.clone())
             .await
-            .unwrap();
+            .expect("generate should succeed");
         assert_eq!(r3.text(), Some("first".to_string()));
     }
 

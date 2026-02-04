@@ -188,12 +188,23 @@ pub trait Tool: Send + Sync {
     }
 
     /// Call the tool with JSON arguments and return JSON output.
+    ///
+    /// Handles both JSON object and JSON string arguments (some LLMs return
+    /// arguments as a JSON-encoded string rather than an object).
     async fn call_json(&self, args: Value) -> Result<Value, ToolError>
     where
         Self::Output: 'static,
     {
-        let typed_args: Self::Args =
-            serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        // Handle both string and object arguments
+        // Some LLMs return arguments as a JSON string instead of an object
+        let typed_args: Self::Args = match &args {
+            Value::String(s) => {
+                serde_json::from_str(s).map_err(|e| ToolError::InvalidArguments(e.to_string()))?
+            }
+            _ => {
+                serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?
+            }
+        };
 
         let result = self.call(typed_args).await.map_err(Into::into)?;
 

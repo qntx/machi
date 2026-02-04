@@ -36,36 +36,59 @@ pub struct VisitWebpageArgs {
 
 // Pre-compiled regex patterns for HTML to text conversion
 static SCRIPT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("valid regex"));
 static STYLE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap());
-static TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
-static MULTILINE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("valid regex"));
+static TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").expect("valid regex"));
+static MULTILINE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\n{3,}").expect("valid regex"));
 
 // HTML element conversion patterns
 static HTML_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     vec![
-        (Regex::new(r"<h1[^>]*>([^<]*)</h1>").unwrap(), "\n# $1\n"),
-        (Regex::new(r"<h2[^>]*>([^<]*)</h2>").unwrap(), "\n## $1\n"),
-        (Regex::new(r"<h3[^>]*>([^<]*)</h3>").unwrap(), "\n### $1\n"),
-        (Regex::new(r"<h4[^>]*>([^<]*)</h4>").unwrap(), "\n#### $1\n"),
-        (Regex::new(r"<p[^>]*>").unwrap(), "\n"),
-        (Regex::new(r"</p>").unwrap(), "\n"),
-        (Regex::new(r"<br\s*/?>").unwrap(), "\n"),
-        (Regex::new(r"<li[^>]*>").unwrap(), "\n- "),
-        (Regex::new(r"</li>").unwrap(), ""),
         (
-            Regex::new(r#"<a[^>]*href=["']([^"']*)["'][^>]*>([^<]*)</a>"#).unwrap(),
+            Regex::new(r"<h1[^>]*>([^<]*)</h1>").expect("valid regex"),
+            "\n# $1\n",
+        ),
+        (
+            Regex::new(r"<h2[^>]*>([^<]*)</h2>").expect("valid regex"),
+            "\n## $1\n",
+        ),
+        (
+            Regex::new(r"<h3[^>]*>([^<]*)</h3>").expect("valid regex"),
+            "\n### $1\n",
+        ),
+        (
+            Regex::new(r"<h4[^>]*>([^<]*)</h4>").expect("valid regex"),
+            "\n#### $1\n",
+        ),
+        (Regex::new(r"<p[^>]*>").expect("valid regex"), "\n"),
+        (Regex::new(r"<br\s*/?>").expect("valid regex"), "\n"),
+        (Regex::new(r"<li[^>]*>").expect("valid regex"), "\n- "),
+        (
+            Regex::new(r#"<a[^>]*href=["']([^"']*)["'][^>]*>([^<]*)</a>"#).expect("valid regex"),
             "[$2]($1)",
         ),
         (
-            Regex::new(r"<strong[^>]*>([^<]*)</strong>").unwrap(),
+            Regex::new(r"<strong[^>]*>([^<]*)</strong>").expect("valid regex"),
             "**$1**",
         ),
-        (Regex::new(r"<b[^>]*>([^<]*)</b>").unwrap(), "**$1**"),
-        (Regex::new(r"<em[^>]*>([^<]*)</em>").unwrap(), "*$1*"),
-        (Regex::new(r"<i[^>]*>([^<]*)</i>").unwrap(), "*$1*"),
-        (Regex::new(r"<code[^>]*>([^<]*)</code>").unwrap(), "`$1`"),
+        (
+            Regex::new(r"<b[^>]*>([^<]*)</b>").expect("valid regex"),
+            "**$1**",
+        ),
+        (
+            Regex::new(r"<em[^>]*>([^<]*)</em>").expect("valid regex"),
+            "*$1*",
+        ),
+        (
+            Regex::new(r"<i[^>]*>([^<]*)</i>").expect("valid regex"),
+            "*$1*",
+        ),
+        (
+            Regex::new(r"<code[^>]*>([^<]*)</code>").expect("valid regex"),
+            "`$1`",
+        ),
     ]
 });
 
@@ -114,6 +137,9 @@ impl VisitWebpageTool {
         for (re, replacement) in HTML_PATTERNS.iter() {
             text = re.replace_all(&text, *replacement).into_owned();
         }
+
+        // Handle trivial closing tags with simple string replacement
+        text = text.replace("</p>", "\n").replace("</li>", "");
 
         // Remove remaining HTML tags
         text = TAG_RE.replace_all(&text, "").into_owned();

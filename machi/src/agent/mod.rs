@@ -563,9 +563,7 @@ impl Agent {
         step: &mut ActionStep,
         message: &ChatMessage,
     ) -> Result<StepResult> {
-        let tool_calls = self.get_tool_calls(step, message)?;
-
-        let Some(tool_calls) = tool_calls else {
+        let Some(tool_calls) = Self::get_tool_calls(step, message) else {
             return Ok(StepResult::Continue);
         };
 
@@ -607,25 +605,24 @@ impl Agent {
     }
 
     fn get_tool_calls(
-        &self,
         step: &ActionStep,
         message: &ChatMessage,
-    ) -> Result<Option<Vec<ChatMessageToolCall>>> {
+    ) -> Option<Vec<ChatMessageToolCall>> {
         if let Some(tc) = &message.tool_calls {
-            return Ok(Some(tc.clone()));
+            return Some(tc.clone());
         }
 
         if let Some(text) = &step.model_output {
             if let Some(parsed) = Self::parse_text_tool_call(text) {
                 debug!(step = step.step_number, tool = %parsed.name(), "Parsed tool call from text");
-                return Ok(Some(vec![parsed]));
+                return Some(vec![parsed]);
             }
             debug!(step = step.step_number, output = %text, "Model returned text without tool call");
         } else {
             debug!(step = step.step_number, "Model returned empty response");
         }
 
-        Ok(None)
+        None
     }
 
     async fn call_tool(&self, name: &str, args: Value) -> std::result::Result<String, String> {

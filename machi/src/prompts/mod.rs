@@ -29,9 +29,11 @@
 //! ```
 
 mod engine;
+mod renderer;
 mod templates;
 
-pub use engine::{PromptEngine, TemplateContext};
+pub use engine::{PromptEngine, RenderError, TemplateContext};
+pub use renderer::{PromptRender, SummaryAppender};
 pub use templates::{
     FinalAnswerPrompt, ManagedAgentPrompt, PlanningPrompt, PromptTemplates, PromptTemplatesBuilder,
 };

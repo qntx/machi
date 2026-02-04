@@ -5,7 +5,7 @@ use crate::{
     error::{AgentError, Result},
     managed::{BoxedManagedAgent, ManagedAgentRegistry},
     memory::AgentMemory,
-    prompts::{PromptEngine, PromptTemplates},
+    prompts::{PromptRender, PromptTemplates},
     providers::common::Model,
     telemetry::Telemetry,
     tool::{BoxedTool, ToolBox},
@@ -283,9 +283,9 @@ impl AgentBuilder {
             tools.add_boxed(tool);
         }
 
-        let prompt_templates = self
+        let prompt_renderer = self
             .prompt_templates
-            .unwrap_or_else(PromptTemplates::toolcalling_agent);
+            .map_or_else(PromptRender::default, PromptRender::new);
 
         Ok(Agent {
             model,
@@ -294,8 +294,7 @@ impl AgentBuilder {
             config: self.config,
             memory: AgentMemory::default(),
             system_prompt: String::new(),
-            prompt_templates,
-            prompt_engine: PromptEngine::new(),
+            prompt_renderer,
             interrupt_flag: Arc::default(),
             step_number: 0,
             state: HashMap::new(),

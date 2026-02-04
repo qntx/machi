@@ -92,7 +92,7 @@ impl DynTool for ManagedAgentTool {
 ///
 /// This is used by the registry to create multiple tool references
 /// to the same underlying managed agent.
-pub(crate) struct ManagedAgentToolClone {
+pub struct ManagedAgentToolClone {
     pub(crate) agent: Arc<Mutex<BoxedManagedAgent>>,
     pub(crate) info: ManagedAgentInfo,
 }

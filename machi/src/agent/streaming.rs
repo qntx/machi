@@ -165,10 +165,10 @@ impl Agent {
                     match result {
                         Ok(delta) => {
                             // Yield text delta for each token
-                            if let Some(content) = &delta.content {
-                                if !content.is_empty() {
-                                    events.push(Ok(StreamEvent::TextDelta(content.clone())));
-                                }
+                            if let Some(content) = &delta.content
+                                && !content.is_empty()
+                            {
+                                events.push(Ok(StreamEvent::TextDelta(content.clone())));
                             }
                             if let Some(usage) = &delta.token_usage {
                                 step.token_usage = Some(*usage);

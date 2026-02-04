@@ -137,7 +137,7 @@ impl AsyncCallbackRegistry {
     /// Dispatch a step to all matching async callbacks.
     ///
     /// Returns a future that completes when all callbacks have finished.
-    pub async fn callback(&self, step: &dyn MemoryStep, ctx: &CallbackContext)
+    pub fn callback(&self, step: &dyn MemoryStep, ctx: &CallbackContext)
     where
     // We need the step to be cloneable for async dispatch
     {
@@ -374,7 +374,7 @@ mod tests {
                 move |_, _| {
                     let order = Arc::clone(&order1);
                     async move {
-                        order.lock().unwrap().push("low");
+                        order.lock().expect("lock poisoned").push("low");
                     }
                 },
                 Priority::LOW,
@@ -383,7 +383,7 @@ mod tests {
                 move |_, _| {
                     let order = Arc::clone(&order2);
                     async move {
-                        order.lock().unwrap().push("high");
+                        order.lock().expect("lock poisoned").push("high");
                     }
                 },
                 Priority::HIGH,
@@ -392,7 +392,7 @@ mod tests {
                 move |_, _| {
                     let order = Arc::clone(&order3);
                     async move {
-                        order.lock().unwrap().push("normal");
+                        order.lock().expect("lock poisoned").push("normal");
                     }
                 },
                 Priority::NORMAL,
@@ -408,7 +408,7 @@ mod tests {
 
         registry.callback_typed(&step, &ctx).await;
 
-        let final_order = order.lock().unwrap();
+        let final_order = order.lock().expect("lock poisoned");
         assert_eq!(*final_order, vec!["high", "normal", "low"]);
     }
 }

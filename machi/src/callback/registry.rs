@@ -154,7 +154,7 @@ impl std::fmt::Debug for CallbackRegistry {
         f.debug_struct("CallbackRegistry")
             .field("handler_count", &self.handler_count())
             .field("type_count", &self.handlers.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -366,15 +366,15 @@ mod tests {
 
         let registry = CallbackRegistry::builder()
             .on_any_with_priority(
-                move |_, _| order1.lock().unwrap().push("low"),
+                move |_, _| order1.lock().expect("lock poisoned").push("low"),
                 Priority::LOW,
             )
             .on_any_with_priority(
-                move |_, _| order2.lock().unwrap().push("high"),
+                move |_, _| order2.lock().expect("lock poisoned").push("high"),
                 Priority::HIGH,
             )
             .on_any_with_priority(
-                move |_, _| order3.lock().unwrap().push("normal"),
+                move |_, _| order3.lock().expect("lock poisoned").push("normal"),
                 Priority::NORMAL,
             )
             .build();
@@ -383,7 +383,7 @@ mod tests {
         let task = TaskStep::new("test");
         registry.callback(&task, &ctx);
 
-        let final_order = order.lock().unwrap();
+        let final_order = order.lock().expect("lock poisoned");
         assert_eq!(*final_order, vec!["high", "normal", "low"]);
     }
 

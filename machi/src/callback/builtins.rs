@@ -74,7 +74,6 @@ impl LoggingConfig {
 /// Create a logging handler with the given configuration.
 ///
 /// Uses the `tracing` crate for structured logging.
-#[must_use]
 pub fn logging_handler(
     config: LoggingConfig,
 ) -> impl Fn(&dyn MemoryStep, &CallbackContext) + Send + Sync + 'static {
@@ -100,6 +99,12 @@ pub fn logging_handler(
                     .unwrap_or_default();
 
                 if config.detailed {
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        clippy::cast_sign_loss,
+                        reason = "duration is always non-negative and within u64 range"
+                    )]
+                    let duration_ms = action.timing.duration_secs().map(|d| (d * 1000.0) as u64);
                     info!(
                         target: "machi::callback",
                         prefix = prefix,
@@ -107,7 +112,7 @@ pub fn logging_handler(
                         tools = ?tool_names,
                         has_error = action.error.is_some(),
                         is_final = action.is_final_answer,
-                        duration_ms = action.timing.duration_secs().map(|d| (d * 1000.0) as u64),
+                        duration_ms = duration_ms,
                         "[{prefix}] Step {step} completed",
                         step = action.step_number
                     );
@@ -235,7 +240,6 @@ impl MetricsSnapshot {
 }
 
 /// Create a metrics handler that updates the given collector.
-#[must_use]
 pub fn metrics_handler(
     collector: Arc<MetricsCollector>,
 ) -> impl Fn(&dyn MemoryStep, &CallbackContext) + Send + Sync + 'static {
@@ -273,7 +277,6 @@ pub fn metrics_handler(
 /// Create a tracing handler that emits spans for each step.
 ///
 /// Integrates with the `tracing` ecosystem for observability.
-#[must_use]
 pub fn tracing_handler() -> impl Fn(&dyn MemoryStep, &CallbackContext) + Send + Sync + 'static {
     |step, ctx| {
         let step_type = std::any::type_name_of_val(step)

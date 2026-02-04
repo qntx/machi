@@ -79,7 +79,7 @@ pub mod prelude {
     };
     pub use crate::message::{ChatMessage, MessageContent, MessageRole};
     pub use crate::multimodal::{AgentAudio, AgentImage, AgentOutput, AudioFormat, ImageFormat};
-    pub use crate::prompts::PromptTemplates;
+    pub use crate::prompts::{PromptRender, PromptTemplates};
     pub use crate::providers::{
         anthropic::{
             AnthropicClient, CLAUDE_3_5_SONNET, CLAUDE_4_OPUS, CLAUDE_4_SONNET, CLAUDE_OPUS_4_5,

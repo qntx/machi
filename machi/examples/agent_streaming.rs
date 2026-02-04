@@ -1,7 +1,9 @@
 //! Streaming agent example with real-time output using Ollama.
 //!
-//! This example demonstrates how to use the streaming API to observe
-//! agent progress in real-time, including tool calls and step completions.
+//! This example demonstrates:
+//! - Streaming API for real-time observation of agent progress
+//! - Final answer checks for validating outputs
+//! - Run summary for detailed execution information
 //!
 //! ```bash
 //! ollama pull qwen3
@@ -31,11 +33,14 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let model = OllamaClient::new().completion_model("qwen3");
 
+    // Build agent with final answer checks
     let mut agent = Agent::builder()
         .model(model)
         .tool(Box::new(Add))
         .tool(Box::new(Multiply))
         .max_steps(5)
+        // Add validation: answer must not be null or empty
+        .final_answer_checks(FinalAnswerChecks::new().not_null().not_empty())
         .build();
 
     let task = "What is 15 + 27? Then multiply the result by 3.";
@@ -90,13 +95,18 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let usage = agent.memory().total_token_usage();
-    println!(
-        "\nTokens: {} (in: {}, out: {})",
-        usage.total(),
-        usage.input_tokens,
-        usage.output_tokens
-    );
+    // Demonstrate run_with_result for detailed execution summary
+    println!("\n--- Running with Result Summary ---\n");
+
+    let result = agent.run_with_result("What is 100 divided by 4?").await;
+
+    println!("{}", result.summary());
+
+    if result.is_success() {
+        println!("Success! Output: {:?}", result.output);
+    } else {
+        println!("Run state: {}", result.state);
+    }
 
     Ok(())
 }

@@ -201,9 +201,8 @@ pub trait Tool: Send + Sync {
             Value::String(s) => {
                 serde_json::from_str(s).map_err(|e| ToolError::InvalidArguments(e.to_string()))?
             }
-            _ => {
-                serde_json::from_value(args).map_err(|e| ToolError::InvalidArguments(e.to_string()))?
-            }
+            _ => serde_json::from_value(args)
+                .map_err(|e| ToolError::InvalidArguments(e.to_string()))?,
         };
 
         let result = self.call(typed_args).await.map_err(Into::into)?;

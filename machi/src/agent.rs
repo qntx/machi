@@ -127,6 +127,189 @@ enum StepResult {
     FinalAnswer(Value),
 }
 
+/// The state of an agent run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunState {
+    /// The run completed successfully with a final answer.
+    Success,
+    /// The run reached the maximum number of steps without a final answer.
+    MaxStepsReached,
+    /// The run was interrupted.
+    Interrupted,
+    /// The run failed with an error.
+    Failed,
+}
+
+impl std::fmt::Display for RunState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Success => write!(f, "success"),
+            Self::MaxStepsReached => write!(f, "max_steps_reached"),
+            Self::Interrupted => write!(f, "interrupted"),
+            Self::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+/// Extended result of an agent run, containing detailed execution information.
+///
+/// Use `agent.run_with_result()` to get this instead of just the final answer.
+#[derive(Debug, Clone)]
+pub struct RunResult {
+    /// The final output of the agent run.
+    pub output: Option<Value>,
+    /// The state of the run (success, max_steps_reached, etc.).
+    pub state: RunState,
+    /// Total token usage during the run.
+    pub token_usage: TokenUsage,
+    /// Number of steps executed.
+    pub steps_taken: usize,
+    /// Timing information.
+    pub timing: Timing,
+    /// Error message if the run failed.
+    pub error: Option<String>,
+}
+
+impl RunResult {
+    /// Check if the run was successful.
+    #[must_use]
+    pub const fn is_success(&self) -> bool {
+        matches!(self.state, RunState::Success)
+    }
+
+    /// Get the output value, if available.
+    #[must_use]
+    pub fn output(&self) -> Option<&Value> {
+        self.output.as_ref()
+    }
+
+    /// Generate a summary of the run.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let mut summary = String::new();
+        summary.push_str(&format!("Run State: {}\n", self.state));
+        summary.push_str(&format!("Steps Taken: {}\n", self.steps_taken));
+        summary.push_str(&format!(
+            "Duration: {:.2}s\n",
+            self.timing.duration_secs().unwrap_or_default()
+        ));
+        summary.push_str(&format!(
+            "Tokens: {} (in: {}, out: {})\n",
+            self.token_usage.total(),
+            self.token_usage.input_tokens,
+            self.token_usage.output_tokens
+        ));
+        if let Some(output) = &self.output {
+            summary.push_str(&format!("Output: {output}\n"));
+        }
+        if let Some(error) = &self.error {
+            summary.push_str(&format!("Error: {error}\n"));
+        }
+        summary
+    }
+}
+
+/// A function that validates the final answer before accepting it.
+///
+/// The check function receives:
+/// - `answer`: The final answer value
+/// - `memory`: The agent's memory containing all steps
+///
+/// Returns `Ok(())` if the answer is valid, or `Err(reason)` if invalid.
+pub type FinalAnswerCheck = Box<dyn Fn(&Value, &AgentMemory) -> Result<()> + Send + Sync>;
+
+/// Builder for creating final answer checks.
+pub struct FinalAnswerChecks {
+    checks: Vec<FinalAnswerCheck>,
+}
+
+impl std::fmt::Debug for FinalAnswerChecks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FinalAnswerChecks")
+            .field("checks_count", &self.checks.len())
+            .finish()
+    }
+}
+
+impl Default for FinalAnswerChecks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FinalAnswerChecks {
+    /// Create a new empty set of checks.
+    #[must_use]
+    pub fn new() -> Self {
+        Self { checks: Vec::new() }
+    }
+
+    /// Add a check function.
+    #[must_use]
+    pub fn add<F>(mut self, check: F) -> Self
+    where
+        F: Fn(&Value, &AgentMemory) -> Result<()> + Send + Sync + 'static,
+    {
+        self.checks.push(Box::new(check));
+        self
+    }
+
+    /// Add a check that the answer is not null.
+    #[must_use]
+    pub fn not_null(self) -> Self {
+        self.add(|answer, _| {
+            if answer.is_null() {
+                Err(AgentError::configuration("Final answer cannot be null"))
+            } else {
+                Ok(())
+            }
+        })
+    }
+
+    /// Add a check that the answer is not an empty string.
+    #[must_use]
+    pub fn not_empty(self) -> Self {
+        self.add(|answer, _| {
+            if let Some(s) = answer.as_str() {
+                if s.trim().is_empty() {
+                    return Err(AgentError::configuration("Final answer cannot be empty"));
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Add a check that the answer contains a specific substring.
+    #[must_use]
+    pub fn contains(self, substring: impl Into<String>) -> Self {
+        let substring = substring.into();
+        self.add(move |answer, _| {
+            let text = answer.to_string();
+            if !text.contains(&substring) {
+                Err(AgentError::configuration(format!(
+                    "Final answer must contain '{substring}'"
+                )))
+            } else {
+                Ok(())
+            }
+        })
+    }
+
+    /// Run all checks on the given answer.
+    pub(crate) fn validate(&self, answer: &Value, memory: &AgentMemory) -> Result<()> {
+        for check in &self.checks {
+            check(answer, memory)?;
+        }
+        Ok(())
+    }
+
+    /// Check if there are any checks defined.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.checks.is_empty()
+    }
+}
+
 /// AI agent that uses LLM function calling to execute tasks with tools.
 ///
 /// The agent follows a ReAct-style loop:
@@ -146,6 +329,7 @@ pub struct Agent {
     step_number: usize,
     state: HashMap<String, Value>,
     custom_instructions: Option<String>,
+    final_answer_checks: FinalAnswerChecks,
 }
 
 impl std::fmt::Debug for Agent {
@@ -275,22 +459,159 @@ impl Agent {
         task: &str,
         args: HashMap<String, Value>,
     ) -> Result<Value> {
+        let result = self.run_with_result_args(task, args).await;
+        match result.state {
+            RunState::Success => result.output.ok_or_else(|| {
+                AgentError::configuration("Run succeeded but no output was produced")
+            }),
+            RunState::MaxStepsReached => Err(AgentError::max_steps(
+                result.steps_taken,
+                self.config.max_steps,
+            )),
+            RunState::Interrupted => Err(AgentError::Interrupted),
+            RunState::Failed => Err(AgentError::configuration(
+                result.error.unwrap_or_else(|| "Unknown error".to_string()),
+            )),
+        }
+    }
+
+    /// Run the agent and return a detailed result including summary.
+    ///
+    /// This method returns a [`RunResult`] containing:
+    /// - The final output (if successful)
+    /// - Run state (success, max_steps_reached, etc.)
+    /// - Token usage statistics
+    /// - Timing information
+    /// - Number of steps taken
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = agent.run_with_result("What is 2 + 2?").await;
+    /// println!("{}", result.summary());
+    /// if result.is_success() {
+    ///     println!("Answer: {}", result.output.unwrap());
+    /// }
+    /// ```
+    #[inline]
+    pub async fn run_with_result(&mut self, task: &str) -> RunResult {
+        self.run_with_result_args(task, HashMap::new()).await
+    }
+
+    /// Run the agent with additional context and return a detailed result.
+    #[instrument(skip(self, args), fields(max_steps = self.config.max_steps))]
+    pub async fn run_with_result_args(
+        &mut self,
+        task: &str,
+        args: HashMap<String, Value>,
+    ) -> RunResult {
         self.prepare_run(task, args);
         info!("Starting agent run");
 
-        let result = self.run_loop().await;
+        let timing = Timing::start_now();
+        let result = self.run_loop_with_checks().await;
+        let mut final_timing = timing;
+        final_timing.complete();
 
-        match &result {
+        let token_usage = self.memory.total_token_usage();
+        let steps_taken = self.step_number;
+
+        match result {
             Ok(answer) => {
                 self.memory.add_step(FinalAnswerStep {
                     output: answer.clone(),
                 });
                 info!("Agent completed successfully");
+                RunResult {
+                    output: Some(answer),
+                    state: RunState::Success,
+                    token_usage,
+                    steps_taken,
+                    timing: final_timing,
+                    error: None,
+                }
             }
-            Err(e) => warn!(error = %e, "Agent run failed"),
+            Err(AgentError::MaxSteps { .. }) => {
+                self.memory.add_step(FinalAnswerStep {
+                    output: Value::String("Maximum steps reached".into()),
+                });
+                RunResult {
+                    output: None,
+                    state: RunState::MaxStepsReached,
+                    token_usage,
+                    steps_taken,
+                    timing: final_timing,
+                    error: Some("Maximum steps reached".to_string()),
+                }
+            }
+            Err(AgentError::Interrupted) => RunResult {
+                output: None,
+                state: RunState::Interrupted,
+                token_usage,
+                steps_taken,
+                timing: final_timing,
+                error: Some("Agent was interrupted".to_string()),
+            },
+            Err(e) => {
+                warn!(error = %e, "Agent run failed");
+                RunResult {
+                    output: None,
+                    state: RunState::Failed,
+                    token_usage,
+                    steps_taken,
+                    timing: final_timing,
+                    error: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    /// Main execution loop with final answer checks.
+    async fn run_loop_with_checks(&mut self) -> Result<Value> {
+        while self.step_number < self.config.max_steps {
+            if self.interrupt_flag.load(Ordering::SeqCst) {
+                return Err(AgentError::Interrupted);
+            }
+
+            self.step_number += 1;
+
+            let mut step = ActionStep {
+                step_number: self.step_number,
+                timing: Timing::start_now(),
+                ..Default::default()
+            };
+
+            let result = self.execute_step(&mut step).await;
+            step.timing.complete();
+
+            match result {
+                Ok(Some(answer)) => {
+                    // Run final answer checks
+                    if !self.final_answer_checks.is_empty() {
+                        if let Err(e) = self.final_answer_checks.validate(&answer, &self.memory) {
+                            warn!(error = %e, "Final answer check failed");
+                            step.error = Some(format!("Final answer check failed: {e}"));
+                            self.memory.add_step(step);
+                            // Continue to next step instead of failing
+                            continue;
+                        }
+                    }
+                    self.memory.add_step(step);
+                    return Ok(answer);
+                }
+                Ok(None) => self.memory.add_step(step),
+                Err(e) => {
+                    step.error = Some(e.to_string());
+                    self.memory.add_step(step);
+                    warn!(step = self.step_number, error = %e, "Step failed");
+                }
+            }
         }
 
-        result
+        Err(AgentError::max_steps(
+            self.step_number,
+            self.config.max_steps,
+        ))
     }
 
     /// Run the agent with streaming output.
@@ -533,47 +854,6 @@ impl Agent {
         });
     }
 
-    /// Main execution loop.
-    async fn run_loop(&mut self) -> Result<Value> {
-        while self.step_number < self.config.max_steps {
-            if self.interrupt_flag.load(Ordering::SeqCst) {
-                return Err(AgentError::Interrupted);
-            }
-
-            self.step_number += 1;
-
-            let mut step = ActionStep {
-                step_number: self.step_number,
-                timing: Timing::start_now(),
-                ..Default::default()
-            };
-
-            let result = self.execute_step(&mut step).await;
-            step.timing.complete();
-
-            match result {
-                Ok(Some(answer)) => {
-                    self.memory.add_step(step);
-                    return Ok(answer);
-                }
-                Ok(None) => self.memory.add_step(step),
-                Err(e) => {
-                    step.error = Some(e.to_string());
-                    self.memory.add_step(step);
-                    warn!(step = self.step_number, error = %e, "Step failed");
-                }
-            }
-        }
-
-        self.memory.add_step(FinalAnswerStep {
-            output: Value::String("Maximum steps reached".into()),
-        });
-        Err(AgentError::max_steps(
-            self.step_number,
-            self.config.max_steps,
-        ))
-    }
-
     /// Get the agent's name.
     #[inline]
     pub fn name(&self) -> Option<&str> {
@@ -643,6 +923,7 @@ pub struct AgentBuilder {
     config: AgentConfig,
     prompt_templates: Option<PromptTemplates>,
     custom_instructions: Option<String>,
+    final_answer_checks: FinalAnswerChecks,
 }
 
 impl std::fmt::Debug for AgentBuilder {
@@ -730,6 +1011,28 @@ impl AgentBuilder {
         self
     }
 
+    /// Set final answer validation checks.
+    ///
+    /// These checks run before accepting a final answer from the agent.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let agent = Agent::builder()
+    ///     .model(model)
+    ///     .final_answer_checks(
+    ///         FinalAnswerChecks::new()
+    ///             .not_null()
+    ///             .not_empty()
+    ///     )
+    ///     .build();
+    /// ```
+    #[must_use]
+    pub fn final_answer_checks(mut self, checks: FinalAnswerChecks) -> Self {
+        self.final_answer_checks = checks;
+        self
+    }
+
     /// Build the agent.
     ///
     /// # Panics
@@ -769,6 +1072,7 @@ impl AgentBuilder {
             step_number: 0,
             state: HashMap::new(),
             custom_instructions: self.custom_instructions,
+            final_answer_checks: self.final_answer_checks,
         })
     }
 }

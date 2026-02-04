@@ -2,6 +2,16 @@
 //!
 //! This module provides streaming variants of agent execution that yield
 //! events as they occur, enabling real-time feedback during agent runs.
+//!
+//! # Parallel Tool Execution
+//!
+//! When multiple tool calls are returned by the model, they are executed
+//! in parallel (respecting `max_parallel_tool_calls` config). Events are
+//! yielded in the following order:
+//!
+//! 1. `ToolCallStart` for each tool (in order)
+//! 2. Tools execute in parallel
+//! 3. `ToolCallComplete` for each tool (as they complete)
 
 use std::sync::atomic::Ordering;
 
@@ -21,6 +31,7 @@ use crate::{
 use super::{
     Agent,
     events::{StepResult, StreamEvent, StreamItem},
+    tool_processor::ToolProcessor,
 };
 
 impl Agent {
@@ -100,26 +111,29 @@ impl Agent {
 
                 // Process tool calls if we got a message
                 let step_outcome = if let Some(ref msg) = message {
-                    // Extract and process tool calls
+                    // Extract tool calls from message or parse from text
                     let tool_calls = msg.tool_calls.clone().or_else(|| {
                         step.model_output.as_ref().and_then(|text| {
-                            super::tool_processor::ToolProcessor::parse_text_tool_call(text)
-                                .map(|tc| vec![tc])
+                            ToolProcessor::parse_text_tool_call(text).map(|tc| vec![tc])
                         })
                     });
 
                     if let Some(calls) = tool_calls {
-                        let mut observations = Vec::new();
+                        // Separate final_answer from regular tool calls
                         let mut got_final = None;
+                        let mut regular_calls: Vec<(&str, String, Value)> = Vec::new();
 
+                        // First pass: record all tool calls and yield start events
                         for tc in &calls {
                             let tool_name = tc.name();
                             let tool_id = tc.id.clone();
 
+                            // Record in step memory
                             step.tool_calls.get_or_insert_with(Vec::new).push(
                                 ToolCall::new(&tool_id, tool_name, tc.arguments().clone())
                             );
 
+                            // Yield start event
                             yield Ok(StreamEvent::ToolCallStart {
                                 id: tool_id.clone(),
                                 name: tool_name.to_string(),
@@ -135,30 +149,50 @@ impl Agent {
                                     name: tool_name.to_string(),
                                     result: Ok("Final answer recorded".to_string()),
                                 });
-                                continue;
+                            } else {
+                                // Queue for parallel execution
+                                regular_calls.push((tool_name, tool_id, tc.arguments().clone()));
                             }
-
-                            // Execute tool
-                            let tool_result = self.tools.call(tool_name, tc.arguments().clone()).await;
-                            let (result_str, obs) = match tool_result {
-                                Ok(output) => {
-                                    let s = format!("Tool '{tool_name}' returned: {output}");
-                                    (Ok(s.clone()), s)
-                                }
-                                Err(e) => {
-                                    let s = format!("Tool '{tool_name}' failed: {e}");
-                                    step.error = Some(s.clone());
-                                    (Err(s.clone()), s)
-                                }
-                            };
-
-                            yield Ok(StreamEvent::ToolCallComplete {
-                                id: tool_id,
-                                name: tool_name.to_string(),
-                                result: result_str,
-                            });
-                            observations.push(obs);
                         }
+
+                        // Execute regular tools in parallel
+                        let observations = if regular_calls.is_empty() {
+                            Vec::new()
+                        } else {
+                            debug!(
+                                count = regular_calls.len(),
+                                max_concurrent = ?self.config.max_parallel_tool_calls,
+                                "Executing tool calls in parallel"
+                            );
+
+                            let results = self.tools.call_parallel(
+                                regular_calls,
+                                self.config.max_parallel_tool_calls,
+                            ).await;
+
+                            let mut obs = Vec::with_capacity(results.len());
+                            for result in results {
+                                let observation = result.to_observation();
+
+                                // Yield completion event - convert Result<Value, ToolError> to Result<String, String>
+                                let result_str: Result<String, String> = match &result.result {
+                                    Ok(v) => Ok(v.to_string()),
+                                    Err(e) => Err(e.to_string()),
+                                };
+                                yield Ok(StreamEvent::ToolCallComplete {
+                                    id: result.id.clone(),
+                                    name: result.name.clone(),
+                                    result: result_str,
+                                });
+
+                                if result.is_err() {
+                                    step.error = Some(observation.clone());
+                                }
+
+                                obs.push(observation);
+                            }
+                            obs
+                        };
 
                         if !observations.is_empty() {
                             step.observations = Some(observations.join("\n"));

@@ -107,15 +107,9 @@ impl Agent {
     #[instrument(skip(self, options), fields(max_steps = self.config.max_steps))]
     pub async fn run(&mut self, options: impl Into<RunOptions>) -> Result<Value> {
         let opts = options.into();
-        if opts.detailed {
-            self.run_internal(opts)
-                .await
-                .into_result(self.config.max_steps)
-        } else {
-            self.run_internal(opts)
-                .await
-                .into_result(self.config.max_steps)
-        }
+        self.run_internal(opts)
+            .await
+            .into_result(self.config.max_steps)
     }
 
     /// Run the agent and return detailed [`RunResult`] with metrics.

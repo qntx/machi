@@ -14,6 +14,12 @@ pub struct AgentConfig {
     pub description: Option<String>,
     /// Whether to provide a run summary when acting as a managed agent.
     pub provide_run_summary: Option<bool>,
+    /// Maximum number of concurrent tool calls (default: unlimited).
+    ///
+    /// When multiple tool calls are returned by the model, they can be executed
+    /// in parallel up to this limit. Set to `Some(1)` to force sequential execution.
+    /// Set to `None` for unlimited parallelism.
+    pub max_parallel_tool_calls: Option<usize>,
 }
 
 impl AgentConfig {
@@ -29,6 +35,7 @@ impl AgentConfig {
             name: None,
             description: None,
             provide_run_summary: None,
+            max_parallel_tool_calls: None,
         }
     }
 }

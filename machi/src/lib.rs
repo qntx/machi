@@ -102,7 +102,7 @@ pub mod prelude {
     };
     pub use crate::telemetry::{RunMetrics, Telemetry};
     pub use crate::tool::{
-        BoxedTool, DynTool, Tool, ToolBox, ToolDefinition, ToolError, ToolResult,
+        BoxedTool, DynTool, Tool, ToolBox, ToolCallResult, ToolDefinition, ToolError, ToolResult,
     };
     pub use crate::tools::{FinalAnswerTool, UserInputTool, VisitWebpageTool, WebSearchTool};
 

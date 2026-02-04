@@ -124,6 +124,37 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the maximum number of concurrent tool calls.
+    ///
+    /// When a model returns multiple tool calls in a single response,
+    /// they can be executed in parallel. This setting controls the
+    /// maximum concurrency level.
+    ///
+    /// - `None` (default): Unlimited parallelism
+    /// - `Some(1)`: Sequential execution (tools run one at a time)
+    /// - `Some(n)`: Up to `n` tools run concurrently
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Allow up to 4 concurrent tool executions
+    /// let agent = Agent::builder()
+    ///     .model(model)
+    ///     .max_parallel_tool_calls(4)
+    ///     .build();
+    ///
+    /// // Force sequential execution
+    /// let agent = Agent::builder()
+    ///     .model(model)
+    ///     .max_parallel_tool_calls(1)
+    ///     .build();
+    /// ```
+    #[must_use]
+    pub const fn max_parallel_tool_calls(mut self, max: usize) -> Self {
+        self.config.max_parallel_tool_calls = Some(max);
+        self
+    }
+
     /// Set the agent's name.
     #[must_use]
     pub fn name(mut self, name: impl Into<String>) -> Self {

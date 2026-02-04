@@ -353,6 +353,121 @@ impl ToolBox {
             .ok_or_else(|| ToolError::NotFound(name.to_string()))?;
         tool.call_json(args).await
     }
+
+    /// Call multiple tools in parallel with optional concurrency limit.
+    ///
+    /// This method executes tool calls concurrently using tokio tasks,
+    /// respecting the optional `max_concurrent` limit for resource control.
+    ///
+    /// # Arguments
+    ///
+    /// * `calls` - Iterator of (tool_name, tool_id, arguments) tuples
+    /// * `max_concurrent` - Optional limit on concurrent executions
+    ///
+    /// # Returns
+    ///
+    /// A vector of `ToolCallResult` in the same order as input calls.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let calls = vec![
+    ///     ("search", "call_1", json!({"query": "rust"})),
+    ///     ("fetch", "call_2", json!({"url": "https://example.com"})),
+    /// ];
+    /// let results = toolbox.call_parallel(calls, Some(4)).await;
+    /// ```
+    pub async fn call_parallel(
+        &self,
+        calls: impl IntoIterator<Item = (&str, String, Value)>,
+        max_concurrent: Option<usize>,
+    ) -> Vec<ToolCallResult> {
+        use futures::stream::{self, StreamExt};
+
+        let calls: Vec<_> = calls.into_iter().collect();
+
+        if calls.is_empty() {
+            return Vec::new();
+        }
+
+        // For single call, execute directly without spawning
+        if calls.len() == 1 {
+            let (name, id, args) = calls
+                .into_iter()
+                .next()
+                .expect("calls length already checked to be 1");
+            let result = self.call(name, args).await;
+            return vec![ToolCallResult {
+                id,
+                name: name.to_string(),
+                result,
+            }];
+        }
+
+        // Determine concurrency limit
+        let concurrency = max_concurrent.unwrap_or(calls.len());
+
+        // Create futures for each tool call
+        let futures = calls.into_iter().map(|(name, id, args)| {
+            let tool_name = name.to_string();
+            let tool_id = id;
+            let tool_args = args;
+
+            async move {
+                let result = if let Some(tool) = self.tools.get(&tool_name) {
+                    tool.call_json(tool_args).await
+                } else {
+                    Err(ToolError::NotFound(tool_name.clone()))
+                };
+
+                ToolCallResult {
+                    id: tool_id,
+                    name: tool_name,
+                    result,
+                }
+            }
+        });
+
+        // Execute with bounded concurrency using buffer_unordered
+        stream::iter(futures)
+            .buffer_unordered(concurrency)
+            .collect()
+            .await
+    }
+}
+
+/// Result of a parallel tool call execution.
+#[derive(Debug, Clone)]
+pub struct ToolCallResult {
+    /// The tool call ID.
+    pub id: String,
+    /// The tool name.
+    pub name: String,
+    /// The execution result.
+    pub result: Result<Value, ToolError>,
+}
+
+impl ToolCallResult {
+    /// Check if this tool call was a success.
+    #[must_use]
+    pub const fn is_ok(&self) -> bool {
+        self.result.is_ok()
+    }
+
+    /// Check if this tool call failed.
+    #[must_use]
+    pub const fn is_err(&self) -> bool {
+        self.result.is_err()
+    }
+
+    /// Convert to observation string for agent memory.
+    #[must_use]
+    pub fn to_observation(&self) -> String {
+        match &self.result {
+            Ok(value) => format!("Tool '{}' returned: {value}", self.name),
+            Err(e) => format!("Tool '{}' failed: {e}", self.name),
+        }
+    }
 }
 
 impl fmt::Debug for ToolBox {

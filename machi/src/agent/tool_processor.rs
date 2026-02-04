@@ -2,6 +2,12 @@
 //!
 //! This module provides a centralized processor for handling tool calls,
 //! eliminating code duplication between sync and streaming execution paths.
+//!
+//! # Parallel Execution
+//!
+//! Tool calls can be executed in parallel when multiple tools are invoked
+//! in a single step. Use `process_parallel` for concurrent execution with
+//! optional concurrency limits.
 
 use serde_json::Value;
 use tracing::debug;
@@ -25,23 +31,43 @@ pub struct ToolProcessResult {
 /// Unified tool call processor for both sync and streaming execution.
 pub struct ToolProcessor<'a> {
     tools: &'a ToolBox,
+    /// Maximum concurrent tool calls (None = unlimited).
+    max_concurrent: Option<usize>,
 }
 
 impl<'a> ToolProcessor<'a> {
-    /// Create a new tool processor.
-    pub const fn new(tools: &'a ToolBox) -> Self {
-        Self { tools }
+    /// Create a new tool processor with concurrency limit.
+    ///
+    /// # Arguments
+    ///
+    /// * `tools` - The toolbox containing available tools
+    /// * `max_concurrent` - Maximum number of concurrent tool executions.
+    ///   - `None` = unlimited parallelism (default)
+    ///   - `Some(1)` = sequential execution
+    ///   - `Some(n)` = up to n concurrent executions
+    pub const fn with_concurrency(tools: &'a ToolBox, max_concurrent: Option<usize>) -> Self {
+        Self {
+            tools,
+            max_concurrent,
+        }
     }
 
-    /// Process tool calls from a model response.
+    /// Process tool calls from a model response with parallel execution.
     ///
-    /// This handles:
-    /// - Extracting tool calls from native format or parsing from text
-    /// - Recording tool calls in the action step
-    /// - Handling `final_answer` tool specially
-    /// - Executing other tools and collecting observations
-    /// - Generating streaming events (if streaming mode enabled)
-    pub async fn process(
+    /// This method executes multiple tool calls concurrently, respecting
+    /// the configured concurrency limit. Tool calls are processed as follows:
+    ///
+    /// 1. Extract tool calls from native format or parse from text
+    /// 2. Record all tool calls in the action step
+    /// 3. Handle `final_answer` specially (not executed, just recorded)
+    /// 4. Execute remaining tools in parallel
+    /// 5. Collect observations and determine outcome
+    ///
+    /// # Arguments
+    ///
+    /// * `step` - The action step to record tool calls and observations
+    /// * `message` - The model response message containing tool calls
+    pub async fn process_parallel(
         &self,
         step: &mut ActionStep,
         message: &ChatMessage,
@@ -52,8 +78,9 @@ impl<'a> ToolProcessor<'a> {
             });
         };
 
-        let mut observations = Vec::with_capacity(tool_calls.len());
+        // Separate final_answer from regular tool calls
         let mut final_answer = None;
+        let mut regular_calls: Vec<(&str, String, Value)> = Vec::new();
 
         for tc in &tool_calls {
             let tool_name = tc.name();
@@ -64,24 +91,44 @@ impl<'a> ToolProcessor<'a> {
                 .get_or_insert_with(Vec::new)
                 .push(ToolCall::new(&tool_id, tool_name, tc.arguments().clone()));
 
-            // Handle final_answer specially
+            // Handle final_answer specially - don't execute, just record
             if tool_name == "final_answer" {
                 let answer = Self::extract_final_answer(tc);
                 final_answer = Some(answer);
                 step.is_final_answer = true;
-                continue;
+            } else {
+                // Queue for parallel execution
+                regular_calls.push((tool_name, tool_id, tc.arguments().clone()));
             }
-
-            // Execute regular tool
-            let (result_str, observation) =
-                self.execute_tool(tool_name, tc.arguments().clone()).await;
-
-            if result_str.is_err() {
-                step.error = Some(observation.clone());
-            }
-
-            observations.push(observation);
         }
+
+        // Execute regular tools in parallel
+        let observations = if regular_calls.is_empty() {
+            Vec::new()
+        } else {
+            debug!(
+                count = regular_calls.len(),
+                max_concurrent = ?self.max_concurrent,
+                "Executing tool calls in parallel"
+            );
+
+            let results = self
+                .tools
+                .call_parallel(regular_calls, self.max_concurrent)
+                .await;
+
+            let mut obs = Vec::with_capacity(results.len());
+            for result in results {
+                let observation = result.to_observation();
+
+                if result.is_err() {
+                    step.error = Some(observation.clone());
+                }
+
+                obs.push(observation);
+            }
+            obs
+        };
 
         // Store observations
         if !observations.is_empty() {
@@ -169,23 +216,5 @@ impl<'a> ToolProcessor<'a> {
     fn extract_final_answer(tc: &ChatMessageToolCall) -> Value {
         tc.parse_arguments::<FinalAnswerArgs>()
             .map_or_else(|_| tc.arguments().clone(), |args| args.answer)
-    }
-
-    /// Execute a tool and return result string and observation.
-    async fn execute_tool(
-        &self,
-        name: &str,
-        args: Value,
-    ) -> (std::result::Result<String, String>, String) {
-        match self.tools.call(name, args).await {
-            Ok(result) => {
-                let s = format!("Tool '{name}' returned: {result}");
-                (Ok(s.clone()), s)
-            }
-            Err(e) => {
-                let s = format!("Tool '{name}' failed: {e}");
-                (Err(s.clone()), s)
-            }
-        }
     }
 }

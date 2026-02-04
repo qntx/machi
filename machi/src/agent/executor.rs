@@ -89,9 +89,10 @@ impl Agent {
 
         let message = self.generate_response(messages, options, step).await?;
 
-        // Use unified tool processor
-        let processor = ToolProcessor::new(&self.tools);
-        let result = processor.process(step, &message).await?;
+        // Use unified tool processor with parallel execution support
+        let processor =
+            ToolProcessor::with_concurrency(&self.tools, self.config.max_parallel_tool_calls);
+        let result = processor.process_parallel(step, &message).await?;
         Ok(result.outcome)
     }
 

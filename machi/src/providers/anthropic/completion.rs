@@ -111,7 +111,9 @@ impl CompletionModel {
     /// Convert message content array to Anthropic format, handling multimodal.
     fn convert_user_content(msg: &ChatMessage) -> Value {
         if let Some(contents) = &msg.content {
-            let has_media = contents.iter().any(crate::message::MessageContent::is_image);
+            let has_media = contents
+                .iter()
+                .any(crate::message::MessageContent::is_image);
             if has_media {
                 let content_array: Vec<Value> = contents
                     .iter()

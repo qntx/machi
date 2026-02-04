@@ -746,7 +746,7 @@ mod tests {
         let bytes = vec![1, 2, 3, 4, 5];
         let img = AgentImage::from_bytes(bytes, ImageFormat::Png);
 
-        let base64 = img.to_base64().unwrap();
+        let base64 = img.to_base64().expect("should have base64 data");
         assert_eq!(base64.as_ref(), "AQIDBAU=");
     }
 
@@ -755,7 +755,7 @@ mod tests {
         let bytes = vec![1, 2, 3, 4, 5];
         let img = AgentImage::from_bytes(bytes, ImageFormat::Png);
 
-        let data_url = img.to_data_url().unwrap();
+        let data_url = img.to_data_url().expect("should have data URL");
         assert!(data_url.starts_with("data:image/png;base64,"));
     }
 

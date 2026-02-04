@@ -34,10 +34,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             Ok(StreamEvent::TextDelta(text)) => print!("{text}"),
             Ok(StreamEvent::ToolCallStart { name, .. }) => println!("\n[Calling: {name}]"),
             Ok(StreamEvent::ToolCallComplete { name, result, .. }) => {
-                println!(
-                    "[{name} returned: {}]",
-                    result.unwrap_or_else(|e| e)
-                );
+                println!("[{name} returned: {}]", result.unwrap_or_else(|e| e));
             }
             Ok(StreamEvent::FinalAnswer { answer }) => println!("\nAnswer: {answer}"),
             Ok(StreamEvent::Error(e)) => eprintln!("\n[Error] {e}"),

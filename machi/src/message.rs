@@ -146,7 +146,11 @@ impl MessageContent {
         if let Some(url) = image.as_url() {
             // Use URL directly for URL-based images
             Some(Self::image_url_with_detail(url, "auto"))
-        } else { image.to_data_url().map(|data_url| Self::image_url_with_detail(data_url, "auto")) }
+        } else {
+            image
+                .to_data_url()
+                .map(|data_url| Self::image_url_with_detail(data_url, "auto"))
+        }
     }
 
     /// Create a new audio content from base64 data.

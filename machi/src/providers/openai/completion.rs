@@ -63,33 +63,33 @@ impl CompletionModel {
     }
 
     /// Convert MessageContent to OpenAI API format.
-    fn convert_content_to_openai(content: &crate::message::MessageContent) -> Option<Value> {
+    fn convert_content_to_openai(content: &crate::message::MessageContent) -> Value {
         use crate::message::MessageContent;
         match content {
-            MessageContent::Text { text } => Some(serde_json::json!({
+            MessageContent::Text { text } => serde_json::json!({
                 "type": "text",
                 "text": text
-            })),
-            MessageContent::Image { image, .. } => Some(serde_json::json!({
+            }),
+            MessageContent::Image { image, .. } => serde_json::json!({
                 "type": "image_url",
                 "image_url": { "url": format!("data:image/jpeg;base64,{}", image) }
-            })),
-            MessageContent::ImageUrl { image_url } => Some(serde_json::json!({
+            }),
+            MessageContent::ImageUrl { image_url } => serde_json::json!({
                 "type": "image_url",
                 "image_url": {
                     "url": image_url.url,
                     "detail": image_url.detail.as_deref().unwrap_or("auto")
                 }
-            })),
+            }),
             MessageContent::Audio { audio, format, .. } => {
                 let fmt = format.as_deref().unwrap_or("wav");
-                Some(serde_json::json!({
+                serde_json::json!({
                     "type": "input_audio",
                     "input_audio": {
                         "data": audio,
                         "format": fmt
                     }
-                }))
+                })
             }
         }
     }
@@ -168,7 +168,7 @@ impl CompletionModel {
                         // Multimodal: convert to array format
                         let content_array: Vec<Value> = contents
                             .iter()
-                            .filter_map(Self::convert_content_to_openai)
+                            .map(Self::convert_content_to_openai)
                             .collect();
                         obj["content"] = serde_json::json!(content_array);
                     } else if let Some(text) = msg.text_content() {

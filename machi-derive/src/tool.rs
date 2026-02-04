@@ -11,6 +11,9 @@
 //! - Compile-time validation
 //! - Explicit override capability when needed
 
+// False positive: clippy misinterprets darling's `default` attribute as `if !default`
+#![allow(clippy::if_not_else)]
+
 use convert_case::{Case, Casing};
 use darling::{FromMeta, ast::NestedMeta};
 use proc_macro::TokenStream;
@@ -81,7 +84,7 @@ struct TypeInfo {
     /// Whether this type is nullable (Option<T>)
     nullable: bool,
     /// Inner type for generic types (e.g., T in Vec<T> or Option<T>)
-    inner: Option<Box<TypeInfo>>,
+    inner: Option<Box<Self>>,
 }
 
 impl TypeInfo {
@@ -133,10 +136,10 @@ impl TypeInfo {
                 }
 
                 // Handle Result<T, E> - extract the success type
-                if type_name == "Result" {
-                    if let Some(inner_ty) = Self::extract_generic_arg(segment) {
-                        return Self::from_type(inner_ty);
-                    }
+                if type_name == "Result"
+                    && let Some(inner_ty) = Self::extract_generic_arg(segment)
+                {
+                    return Self::from_type(inner_ty);
                 }
 
                 Self {
@@ -147,14 +150,14 @@ impl TypeInfo {
             }
             Type::Reference(type_ref) => {
                 // Handle &str specially
-                if let Type::Path(inner) = &*type_ref.elem {
-                    if inner.path.is_ident("str") {
-                        return Self {
-                            schema_type: JsonSchemaType::String,
-                            nullable: false,
-                            inner: None,
-                        };
-                    }
+                if let Type::Path(inner) = &*type_ref.elem
+                    && inner.path.is_ident("str")
+                {
+                    return Self {
+                        schema_type: JsonSchemaType::String,
+                        nullable: false,
+                        inner: None,
+                    };
                 }
                 Self::from_type(&type_ref.elem)
             }
@@ -168,7 +171,7 @@ impl TypeInfo {
     }
 
     /// Create an object type info (fallback).
-    fn object() -> Self {
+    const fn object() -> Self {
         Self {
             schema_type: JsonSchemaType::Object,
             nullable: false,
@@ -178,10 +181,10 @@ impl TypeInfo {
 
     /// Extract the first generic argument from a path segment.
     fn extract_generic_arg(segment: &syn::PathSegment) -> Option<&Type> {
-        if let PathArguments::AngleBracketed(args) = &segment.arguments {
-            if let Some(syn::GenericArgument::Type(ty)) = args.args.first() {
-                return Some(ty);
-            }
+        if let PathArguments::AngleBracketed(args) = &segment.arguments
+            && let Some(syn::GenericArgument::Type(ty)) = args.args.first()
+        {
+            return Some(ty);
         }
         None
     }
@@ -216,7 +219,7 @@ impl TypeInfo {
     }
 
     /// Get the output type string for LLM prompts.
-    fn output_type_str(&self) -> &'static str {
+    const fn output_type_str(&self) -> &'static str {
         self.schema_type.as_str()
     }
 }
@@ -246,13 +249,12 @@ impl DocInfo {
             .iter()
             .filter(|attr| attr.path().is_ident("doc"))
             .filter_map(|attr| {
-                if let Meta::NameValue(meta) = &attr.meta {
-                    if let Expr::Lit(ExprLit {
+                if let Meta::NameValue(meta) = &attr.meta
+                    && let Expr::Lit(ExprLit {
                         lit: Lit::Str(s), ..
                     }) = &meta.value
-                    {
-                        return Some(s.value());
-                    }
+                {
+                    return Some(s.value());
                 }
                 None
             })
@@ -287,11 +289,11 @@ impl DocInfo {
                         current_param = Some(name);
                     } else if let Some(ref param) = current_param {
                         // Continuation line
-                        if !trimmed.is_empty() {
-                            if let Some(desc) = info.param_descriptions.get_mut(param) {
-                                desc.push(' ');
-                                desc.push_str(trimmed);
-                            }
+                        if !trimmed.is_empty()
+                            && let Some(desc) = info.param_descriptions.get_mut(param)
+                        {
+                            desc.push(' ');
+                            desc.push_str(trimmed);
                         }
                     }
                 }
@@ -372,15 +374,13 @@ impl FromMeta for ParamDescriptions {
     fn from_list(items: &[NestedMeta]) -> darling::Result<Self> {
         let mut map = HashMap::new();
         for item in items {
-            if let NestedMeta::Meta(Meta::NameValue(nv)) = item {
-                if let Some(ident) = nv.path.get_ident() {
-                    if let Expr::Lit(ExprLit {
-                        lit: Lit::Str(s), ..
-                    }) = &nv.value
-                    {
-                        map.insert(ident.to_string(), s.value());
-                    }
-                }
+            if let NestedMeta::Meta(Meta::NameValue(nv)) = item
+                && let Some(ident) = nv.path.get_ident()
+                && let Expr::Lit(ExprLit {
+                    lit: Lit::Str(s), ..
+                }) = &nv.value
+            {
+                map.insert(ident.to_string(), s.value());
             }
         }
         Ok(Self(map))
@@ -395,7 +395,7 @@ impl ToolArgs {
     }
 
     /// Get parameter descriptions map.
-    fn param_descriptions(&self) -> &HashMap<String, String> {
+    const fn param_descriptions(&self) -> &HashMap<String, String> {
         &self.params.0
     }
 }
@@ -421,30 +421,29 @@ fn validate_tool_function(input_fn: &ItemFn) -> syn::Result<()> {
             ));
         }
         ReturnType::Type(_, ty) => {
-            if let Type::Path(type_path) = &**ty {
-                if let Some(segment) = type_path.path.segments.last() {
-                    if segment.ident != "Result" {
-                        return Err(syn::Error::new_spanned(
-                            ty,
-                            "tool function must return Result<T, E>",
-                        ));
-                    }
-                }
+            if let Type::Path(type_path) = &**ty
+                && let Some(segment) = type_path.path.segments.last()
+                && segment.ident != "Result"
+            {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "tool function must return Result<T, E>",
+                ));
             }
         }
     }
 
     // Validate parameter names
     for arg in &input_fn.sig.inputs {
-        if let FnArg::Typed(pat_type) = arg {
-            if let Pat::Ident(ident) = &*pat_type.pat {
-                let name = ident.ident.to_string();
-                if RUST_KEYWORDS.contains(&name.as_str()) {
-                    return Err(syn::Error::new_spanned(
-                        &ident.ident,
-                        format!("parameter name '{name}' is a Rust keyword"),
-                    ));
-                }
+        if let FnArg::Typed(pat_type) = arg
+            && let Pat::Ident(ident) = &*pat_type.pat
+        {
+            let name = ident.ident.to_string();
+            if RUST_KEYWORDS.contains(&name.as_str()) {
+                return Err(syn::Error::new_spanned(
+                    &ident.ident,
+                    format!("parameter name '{name}' is a Rust keyword"),
+                ));
             }
         }
     }
@@ -455,18 +454,15 @@ fn validate_tool_function(input_fn: &ItemFn) -> syn::Result<()> {
 /// Extract Output and Error types from Result<T, E>.
 fn extract_result_types(return_type: &ReturnType) -> (TokenStream2, TokenStream2) {
     if let ReturnType::Type(_, ty) = return_type {
-        if let Type::Path(type_path) = &**ty {
-            if let Some(segment) = type_path.path.segments.last() {
-                if segment.ident == "Result" {
-                    if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                        if args.args.len() == 2 {
-                            let output = args.args.first().expect("output type");
-                            let error = args.args.last().expect("error type");
-                            return (quote!(#output), quote!(#error));
-                        }
-                    }
-                }
-            }
+        if let Type::Path(type_path) = &**ty
+            && let Some(segment) = type_path.path.segments.last()
+            && segment.ident == "Result"
+            && let PathArguments::AngleBracketed(args) = &segment.arguments
+            && args.args.len() == 2
+        {
+            let output = args.args.first().expect("output type");
+            let error = args.args.last().expect("error type");
+            return (quote!(#output), quote!(#error));
         }
         return (quote!(#ty), quote!(::machi::tool::ToolError));
     }
@@ -577,18 +573,17 @@ pub fn tool_impl(args: TokenStream, input: TokenStream) -> TokenStream {
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
     // Generate description
-    let tool_description = macro_args
-        .description
-        .as_ref()
-        .map(|d| quote! { #d.to_string() })
-        .unwrap_or_else(|| {
-            if !doc_info.description.is_empty() {
+    let tool_description = macro_args.description.as_ref().map_or_else(
+        || {
+            if doc_info.description.is_empty() {
+                quote! { format!("Tool function: {}", #fn_name_str) }
+            } else {
                 let desc = &doc_info.description;
                 quote! { #desc.to_string() }
-            } else {
-                quote! { format!("Tool function: {}", #fn_name_str) }
             }
-        });
+        },
+        |d| quote! { #d.to_string() },
+    );
 
     // Collect parameter data for code generation
     let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();

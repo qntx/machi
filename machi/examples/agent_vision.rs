@@ -23,7 +23,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let content = vec![
         MessageContent::text("What is in this image? Describe it in detail."),
-        MessageContent::from_agent_image(&image).unwrap(),
+        MessageContent::from_agent_image(&image).expect("image should have data"),
     ];
     let messages = vec![ChatMessage::with_contents(MessageRole::User, content)];
 

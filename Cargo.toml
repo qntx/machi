@@ -15,38 +15,39 @@ machi-derive = { version = "0.5.1", path = "machi-derive" }
 machi-bot = { version = "0.5.1", path = "machi-bot" }
 
 anyhow = "1.0"
+async-stream = "0.3"
 async-trait = "0.1"
 base64 = "0.22"
-darling = "0.23.0"
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
 bytes = "1.10"
 chrono = { version = "0.4", default-features = false, features = ["serde", "std", "clock"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 convert_case = "0.11.0"
+darling = "0.23.0"
+dirs-next = "2.0"
 futures = "0.3"
+getrandom = "0.4.1"
+html-escape = "0.2"
+minijinja = { version = "2.6", features = ["loader"] }
+proc-macro2 = "1.0"
+quote = "1.0"
 regex = "1.11"
-scraper = "0.25.0"
 reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }
 rmcp = { version = "0.14", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
+scraper = "0.25.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-minijinja = { version = "2.6", features = ["loader"] }
-async-stream = "0.3"
+syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
 teloxide = { version = "0.17.0", features = ["macros"] }
+tempfile = "3.24"
 thiserror = "2.0"
 tokio = { version = "1.44", default-features = false, features = ["sync"] }
 tokio-test = "0.4"
+toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 urlencoding = "2.1"
 uuid = { version = "1.16", features = ["v4", "serde"] }
-getrandom = "0.4.1"
-html-escape = "0.2"
-dirs-next = "2.0"
-clap = { version = "4.5", features = ["derive", "env"] }
-tempfile = "3.24.0"
 
 [profile.release]
 codegen-units = 1

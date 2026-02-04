@@ -198,7 +198,7 @@ async fn cmd_gateway(args: GatewayArgs, config_path: Option<PathBuf>) -> Result<
         let content = tokio::fs::read_to_string(&path)
             .await
             .map_err(|e| BotError::config(format!("failed to read config: {e}")))?;
-        serde_json::from_str(&content)
+        toml::from_str(&content)
             .map_err(|e| BotError::config(format!("failed to parse config: {e}")))?
     } else {
         load_config().await.unwrap_or_default()
@@ -214,11 +214,8 @@ async fn cmd_gateway(args: GatewayArgs, config_path: Option<PathBuf>) -> Result<
         config.channels.telegram.enabled = false;
     }
 
-    // Get API key
-    let (api_key, is_anthropic) = get_api_key()?;
-
-    // Create model
-    let model = create_model(&api_key, is_anthropic, &config.agents.defaults.model);
+    // Create model based on configuration
+    let model = create_model(&config)?;
 
     // Build gateway
     let gateway = GatewayBuilder::new()
@@ -250,7 +247,7 @@ async fn cmd_chat(args: ChatArgs, config_path: Option<PathBuf>) -> Result<()> {
         let content = tokio::fs::read_to_string(&path)
             .await
             .map_err(|e| BotError::config(format!("failed to read config: {e}")))?;
-        serde_json::from_str(&content).unwrap_or_default()
+        toml::from_str(&content).unwrap_or_default()
     } else {
         load_config().await.unwrap_or_default()
     };
@@ -260,11 +257,8 @@ async fn cmd_chat(args: ChatArgs, config_path: Option<PathBuf>) -> Result<()> {
         config.agents.defaults.model = model;
     }
 
-    // Get API key
-    let (api_key, is_anthropic) = get_api_key()?;
-
-    // Create model
-    let model = create_model(&api_key, is_anthropic, &config.agents.defaults.model);
+    // Create model based on configuration
+    let model = create_model(&config)?;
 
     // Handle initial message
     if let Some(ref msg) = args.message {
@@ -395,33 +389,114 @@ async fn cmd_config(args: ConfigArgs, config_path: Option<PathBuf>) -> Result<()
     Ok(())
 }
 
-/// Get API key from environment.
-fn get_api_key() -> Result<(String, bool)> {
-    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
-        return Ok((key, true));
-    }
-    if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-        return Ok((key, false));
-    }
-    Err(BotError::config(
-        "No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY",
-    ))
+/// Model provider enum to support multiple backends.
+#[derive(Clone)]
+enum ModelProvider {
+    Ollama(machi::providers::ollama::CompletionModel),
+    Anthropic(machi::providers::anthropic::CompletionModel),
+    OpenAI(machi::providers::openai::CompletionModel),
 }
 
-/// Create model from API key.
+#[async_trait::async_trait]
+impl machi::prelude::Model for ModelProvider {
+    fn model_id(&self) -> &str {
+        match self {
+            Self::Ollama(m) => m.model_id(),
+            Self::Anthropic(m) => m.model_id(),
+            Self::OpenAI(m) => m.model_id(),
+        }
+    }
+
+    async fn generate(
+        &self,
+        messages: Vec<machi::message::ChatMessage>,
+        options: machi::providers::common::GenerateOptions,
+    ) -> std::result::Result<machi::providers::common::ModelResponse, machi::error::AgentError>
+    {
+        match self {
+            Self::Ollama(m) => m.generate(messages, options).await,
+            Self::Anthropic(m) => m.generate(messages, options).await,
+            Self::OpenAI(m) => m.generate(messages, options).await,
+        }
+    }
+
+    fn supports_streaming(&self) -> bool {
+        match self {
+            Self::Ollama(m) => m.supports_streaming(),
+            Self::Anthropic(m) => m.supports_streaming(),
+            Self::OpenAI(m) => m.supports_streaming(),
+        }
+    }
+
+    fn supports_tool_calling(&self) -> bool {
+        match self {
+            Self::Ollama(m) => m.supports_tool_calling(),
+            Self::Anthropic(m) => m.supports_tool_calling(),
+            Self::OpenAI(m) => m.supports_tool_calling(),
+        }
+    }
+}
+
+/// Create model based on configuration.
 ///
-/// Currently uses Anthropic client for all providers.
-/// TODO: Add proper OpenAI provider support when available.
-fn create_model(
-    api_key: &str,
-    _is_anthropic: bool,
-    model_name: &str,
-) -> machi::providers::anthropic::CompletionModel {
+/// Priority:
+/// 1. Ollama (if configured)
+/// 2. Anthropic (if API key available)
+/// 3. OpenAI (if API key available)
+fn create_model(config: &BotConfig) -> Result<ModelProvider> {
     use machi::prelude::*;
 
-    // Currently always uses Anthropic client
-    // Future: dispatch based on provider type
-    AnthropicClient::new(api_key).completion_model(model_name)
+    let model_name = &config.agents.defaults.model;
+
+    // Check Ollama first (local, no API key needed)
+    if let Some(ref ollama_config) = config.providers.ollama {
+        tracing::info!(model = %model_name, "Using Ollama backend");
+        let client = OllamaClient::builder()
+            .base_url(&ollama_config.api_base)
+            .build();
+        return Ok(ModelProvider::Ollama(client.completion_model(model_name)));
+    }
+
+    // Check Anthropic
+    if let Some(ref anthropic_config) = config.providers.anthropic {
+        tracing::info!(model = %model_name, "Using Anthropic backend");
+        return Ok(ModelProvider::Anthropic(
+            AnthropicClient::new(&anthropic_config.api_key).completion_model(model_name),
+        ));
+    }
+
+    // Check environment variable for Anthropic
+    if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+        tracing::info!(model = %model_name, "Using Anthropic backend (from env)");
+        return Ok(ModelProvider::Anthropic(
+            AnthropicClient::new(&api_key).completion_model(model_name),
+        ));
+    }
+
+    // Check OpenAI
+    if let Some(ref openai_config) = config.providers.openai {
+        tracing::info!(model = %model_name, "Using OpenAI backend");
+        let mut client = OpenAIClient::new(&openai_config.api_key);
+        if let Some(ref base_url) = openai_config.api_base {
+            client = OpenAIClient::builder()
+                .api_key(&openai_config.api_key)
+                .base_url(base_url)
+                .build();
+        }
+        return Ok(ModelProvider::OpenAI(client.completion_model(model_name)));
+    }
+
+    // Check environment variable for OpenAI
+    if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+        tracing::info!(model = %model_name, "Using OpenAI backend (from env)");
+        return Ok(ModelProvider::OpenAI(
+            OpenAIClient::new(&api_key).completion_model(model_name),
+        ));
+    }
+
+    Err(BotError::config(
+        "No LLM provider configured. Set up Ollama, or provide ANTHROPIC_API_KEY/OPENAI_API_KEY",
+    ))
 }
 
 /// Print environment variable status.

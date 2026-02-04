@@ -2,7 +2,7 @@
 //!
 //! Provides a configuration system that loads settings from:
 //! 1. Default values
-//! 2. Config file (`~/.machi-bot/config.json`)
+//! 2. Config file (`~/.machi-bot/config.toml`)
 //! 3. Environment variables
 
 mod schema;
@@ -21,9 +21,12 @@ pub enum ConfigError {
     /// IO error.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    /// JSON parsing error.
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    /// TOML parsing error.
+    #[error("TOML parse error: {0}")]
+    TomlParse(#[from] toml::de::Error),
+    /// TOML serialization error.
+    #[error("TOML serialize error: {0}")]
+    TomlSerialize(#[from] toml::ser::Error),
     /// Missing required field.
     #[error("missing required config: {0}")]
     MissingField(String),
@@ -40,13 +43,13 @@ pub type ConfigResult<T> = Result<T, ConfigError>;
 pub fn default_config_dir() -> PathBuf {
     dirs_next::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".machi-bot")
+        .join(".machi")
 }
 
 /// Get the default config file path.
 #[must_use]
 pub fn config_path() -> PathBuf {
-    default_config_dir().join("config.json")
+    default_config_dir().join("config.toml")
 }
 
 /// Load configuration from the default path.
@@ -62,7 +65,7 @@ pub async fn load_config_from(path: PathBuf) -> ConfigResult<BotConfig> {
     }
 
     let content = tokio::fs::read_to_string(&path).await?;
-    let config: BotConfig = serde_json::from_str(&content)?;
+    let config: BotConfig = toml::from_str(&content)?;
     debug!(path = %path.display(), "loaded config file");
 
     Ok(config)
@@ -80,7 +83,7 @@ pub async fn save_config_to(config: &BotConfig, path: PathBuf) -> ConfigResult<(
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    let content = serde_json::to_string_pretty(config)?;
+    let content = toml::to_string_pretty(config)?;
     tokio::fs::write(&path, content).await?;
     info!(path = %path.display(), "saved config file");
 
@@ -114,9 +117,9 @@ mod tests {
     #[test]
     fn test_default_paths() {
         let cfg_dir = default_config_dir();
-        assert!(cfg_dir.ends_with(".machi-bot"));
+        assert!(cfg_dir.ends_with(".machi"));
 
         let cfg_path = config_path();
-        assert!(cfg_path.ends_with("config.json"));
+        assert!(cfg_path.ends_with("config.toml"));
     }
 }

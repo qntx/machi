@@ -6,10 +6,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-// ============================================================================
-// Time Utilities
-// ============================================================================
-
 /// Get current timestamp in milliseconds since Unix epoch.
 #[inline]
 #[must_use]
@@ -33,10 +29,6 @@ pub fn timestamp_us() -> u64 {
         .unwrap_or(Duration::ZERO)
         .as_micros() as u64
 }
-
-// ============================================================================
-// ID Generation
-// ============================================================================
 
 /// Global counter for unique ID generation.
 static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -63,10 +55,6 @@ pub fn generate_job_id() -> String {
     generate_id("job")
 }
 
-// ============================================================================
-// Path Utilities
-// ============================================================================
-
 /// Get the user's home directory.
 #[must_use]
 pub fn home_dir() -> PathBuf {
@@ -76,13 +64,13 @@ pub fn home_dir() -> PathBuf {
 /// Get the default machi-bot configuration directory.
 #[must_use]
 pub fn config_dir() -> PathBuf {
-    home_dir().join(".machi-bot")
+    home_dir().join(".machi")
 }
 
 /// Get the default configuration file path.
 #[must_use]
 pub fn config_path() -> PathBuf {
-    config_dir().join("config.json")
+    config_dir().join("config.toml")
 }
 
 /// Get the default sessions directory.
@@ -108,10 +96,6 @@ pub fn sanitize_filename(name: &str) -> String {
         })
         .collect()
 }
-
-// ============================================================================
-// String Utilities
-// ============================================================================
 
 /// Truncate a string to a maximum length, adding ellipsis if truncated.
 #[must_use]
@@ -180,10 +164,6 @@ pub fn split_into_chunks(text: &str, max_len: usize) -> Vec<String> {
     chunks
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,9 +211,15 @@ mod tests {
     #[test]
     fn test_config_paths() {
         let cfg = config_dir();
-        assert!(cfg.ends_with(".machi-bot"));
+        assert!(
+            cfg.file_name().is_some_and(|n| n == ".machi"),
+            "config dir should end with .machi"
+        );
 
         let cfg_file = config_path();
-        assert!(cfg_file.ends_with("config.json"));
+        assert!(
+            cfg_file.file_name().is_some_and(|n| n == "config.toml"),
+            "config path should end with config.toml"
+        );
     }
 }

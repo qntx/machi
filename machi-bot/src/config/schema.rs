@@ -5,10 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 
-// ============================================================================
-// Root Configuration
-// ============================================================================
-
 /// Root configuration structure.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -66,10 +62,9 @@ pub struct ProviderConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterConfig {
     /// API key.
-    #[serde(rename = "apiKey")]
     pub api_key: String,
     /// Base URL override.
-    #[serde(rename = "apiBase", default)]
+    #[serde(default)]
     pub api_base: Option<String>,
 }
 
@@ -77,10 +72,9 @@ pub struct OpenRouterConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAIConfig {
     /// API key.
-    #[serde(rename = "apiKey")]
     pub api_key: String,
     /// Base URL override.
-    #[serde(rename = "apiBase", default)]
+    #[serde(default)]
     pub api_base: Option<String>,
 }
 
@@ -88,7 +82,6 @@ pub struct OpenAIConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnthropicConfig {
     /// API key.
-    #[serde(rename = "apiKey")]
     pub api_key: String,
 }
 
@@ -96,7 +89,7 @@ pub struct AnthropicConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaConfig {
     /// Base URL (default: http://localhost:11434).
-    #[serde(rename = "apiBase", default = "default_ollama_url")]
+    #[serde(default = "default_ollama_url")]
     pub api_base: String,
 }
 
@@ -108,7 +101,6 @@ fn default_ollama_url() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroqConfig {
     /// API key.
-    #[serde(rename = "apiKey")]
     pub api_key: String,
 }
 
@@ -116,7 +108,6 @@ pub struct GroqConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiConfig {
     /// API key.
-    #[serde(rename = "apiKey")]
     pub api_key: String,
 }
 
@@ -124,10 +115,10 @@ pub struct GeminiConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VllmConfig {
     /// API key (can be any non-empty string for local servers).
-    #[serde(rename = "apiKey", default = "default_vllm_key")]
+    #[serde(default = "default_vllm_key")]
     pub api_key: String,
     /// Base URL for the vLLM server.
-    #[serde(rename = "apiBase", default = "default_vllm_url")]
+    #[serde(default = "default_vllm_url")]
     pub api_base: String,
 }
 
@@ -154,7 +145,7 @@ pub struct AgentDefaults {
     #[serde(default = "default_model")]
     pub model: String,
     /// Maximum iterations per request.
-    #[serde(rename = "maxIterations", default = "default_max_iterations")]
+    #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
 }
 
@@ -197,7 +188,7 @@ pub struct TelegramConfig {
     #[serde(default)]
     pub token: Option<String>,
     /// Allowed user IDs (empty = allow all).
-    #[serde(rename = "allowFrom", default)]
+    #[serde(default)]
     pub allow_from: Vec<String>,
 }
 
@@ -208,7 +199,7 @@ pub struct WhatsAppConfig {
     #[serde(default)]
     pub enabled: bool,
     /// Allowed phone numbers (empty = allow all).
-    #[serde(rename = "allowFrom", default)]
+    #[serde(default)]
     pub allow_from: Vec<String>,
 }
 
@@ -235,7 +226,7 @@ pub struct WebToolsConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SearchConfig {
     /// Brave Search API key.
-    #[serde(rename = "apiKey", default)]
+    #[serde(default)]
     pub api_key: Option<String>,
 }
 
@@ -246,7 +237,7 @@ pub struct ExecConfig {
     #[serde(default = "default_exec_timeout")]
     pub timeout: u64,
     /// Restrict commands to workspace directory.
-    #[serde(rename = "restrictToWorkspace", default = "default_true")]
+    #[serde(default = "default_true")]
     pub restrict_to_workspace: bool,
 }
 
@@ -266,10 +257,6 @@ impl Default for ExecConfig {
         }
     }
 }
-
-// ============================================================================
-// Validation
-// ============================================================================
 
 impl BotConfig {
     /// Validate the configuration and return any issues found.
@@ -417,34 +404,27 @@ mod tests {
     #[test]
     fn test_config_serialization() {
         let config = BotConfig::default();
-        let json = serde_json::to_string_pretty(&config).unwrap();
-        let parsed: BotConfig = serde_json::from_str(&json).unwrap();
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let parsed: BotConfig = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.agents.defaults.model, config.agents.defaults.model);
     }
 
     #[test]
     fn test_parse_sample_config() {
-        let json = r#"{
-            "providers": {
-                "openrouter": {
-                    "apiKey": "sk-or-v1-xxx"
-                }
-            },
-            "agents": {
-                "defaults": {
-                    "model": "anthropic/claude-opus-4-5"
-                }
-            },
-            "channels": {
-                "telegram": {
-                    "enabled": true,
-                    "token": "123456:ABC",
-                    "allowFrom": ["123456789"]
-                }
-            }
-        }"#;
+        let toml_str = r#"
+[providers.openrouter]
+api_key = "sk-or-v1-xxx"
 
-        let config: BotConfig = serde_json::from_str(json).unwrap();
+[agents.defaults]
+model = "anthropic/claude-opus-4-5"
+
+[channels.telegram]
+enabled = true
+token = "123456:ABC"
+allow_from = ["123456789"]
+"#;
+
+        let config: BotConfig = toml::from_str(toml_str).unwrap();
         assert!(config.providers.openrouter.is_some());
         assert!(config.channels.telegram.enabled);
         assert_eq!(config.agents.defaults.model, "anthropic/claude-opus-4-5");

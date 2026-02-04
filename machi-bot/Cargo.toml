@@ -11,28 +11,20 @@ default = ["telegram"]
 telegram = ["dep:teloxide"]
 
 [dependencies]
-# Core
-machi = { workspace = true, features = ["toolkit"] }
 async-trait.workspace = true
+clap.workspace = true
+dirs-next.workspace = true
+machi = { workspace = true, features = ["toolkit"] }
+regex.workspace = true
+reqwest = { workspace = true, features = ["multipart", "json"] }
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-tracing-subscriber = { workspace = true }
-dirs-next.workspace = true
-clap.workspace = true
-
-# Async runtime
-tokio = { workspace = true, features = ["full", "sync", "signal"] }
-
-# HTTP client for transcription
-reqwest = { workspace = true, features = ["multipart", "json"] }
-
-# Regex for text processing
-regex = "1"
-
-# Optional: Telegram support
 teloxide = { workspace = true, optional = true }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["full", "sync", "signal"] }
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [[bin]]
 name = "machi"

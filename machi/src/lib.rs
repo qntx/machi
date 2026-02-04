@@ -37,6 +37,7 @@ pub mod managed_agent;
 pub mod mcp;
 pub mod memory;
 pub mod message;
+pub mod multimodal;
 pub mod prompts;
 pub mod providers;
 pub mod tool;
@@ -59,6 +60,7 @@ pub mod prelude {
         ActionStep, AgentMemory, MemoryStep, PlanningStep, TaskStep, ToolCall,
     };
     pub use crate::message::{ChatMessage, MessageContent, MessageRole};
+    pub use crate::multimodal::{AgentAudio, AgentImage, AgentOutput, AudioFormat, ImageFormat};
     pub use crate::prompts::PromptTemplates;
     pub use crate::providers::{
         anthropic::{

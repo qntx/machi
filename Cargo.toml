@@ -12,6 +12,7 @@ repository = "https://github.com/pyroth/machi"
 [workspace.dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
+base64 = "0.22"
 darling = "0.23.0"
 proc-macro2 = "1.0"
 quote = "1.0"

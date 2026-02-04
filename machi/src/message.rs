@@ -39,7 +39,7 @@ impl MessageRole {
     }
 }
 
-/// Content of a message, which can be text, image, or other types.
+/// Content of a message, which can be text, image, audio, or other types.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum MessageContent {
@@ -48,25 +48,45 @@ pub enum MessageContent {
         /// The text content.
         text: String,
     },
-    /// Image content (base64 encoded or URL).
+    /// Image content (base64 encoded).
     Image {
-        /// The image data or URL.
+        /// The image data (base64 encoded).
         image: String,
+        /// Optional format hint (e.g., "png", "jpeg").
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
     },
-    /// Image URL content.
+    /// Image URL content (for vision model APIs).
     #[serde(rename = "image_url")]
     ImageUrl {
-        /// The image URL.
-        image_url: ImageUrl,
+        /// The image URL details.
+        image_url: ImageUrlDetail,
+    },
+    /// Audio content (base64 encoded).
+    Audio {
+        /// The audio data (base64 encoded).
+        audio: String,
+        /// Sample rate in Hz.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sample_rate: Option<u32>,
+        /// Optional format hint (e.g., "wav", "mp3").
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
     },
 }
 
-/// Image URL structure.
+/// Image URL structure with detail level for vision APIs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageUrl {
-    /// The URL of the image.
+pub struct ImageUrlDetail {
+    /// The URL of the image (can be http(s) URL or data URL).
     pub url: String,
+    /// Detail level for image processing: "low", "high", or "auto".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
+
+/// Type alias for backward compatibility.
+pub type ImageUrl = ImageUrlDetail;
 
 impl MessageContent {
     /// Create a new text content.
@@ -75,11 +95,21 @@ impl MessageContent {
         Self::Text { text: text.into() }
     }
 
-    /// Create a new image content.
+    /// Create a new image content from base64 data.
     #[must_use]
     pub fn image(image: impl Into<String>) -> Self {
         Self::Image {
             image: image.into(),
+            format: None,
+        }
+    }
+
+    /// Create a new image content with format hint.
+    #[must_use]
+    pub fn image_with_format(image: impl Into<String>, format: impl Into<String>) -> Self {
+        Self::Image {
+            image: image.into(),
+            format: Some(format.into()),
         }
     }
 
@@ -87,8 +117,71 @@ impl MessageContent {
     #[must_use]
     pub fn image_url(url: impl Into<String>) -> Self {
         Self::ImageUrl {
-            image_url: ImageUrl { url: url.into() },
+            image_url: ImageUrlDetail {
+                url: url.into(),
+                detail: None,
+            },
         }
+    }
+
+    /// Create a new image URL content with detail level.
+    ///
+    /// Detail can be "low", "high", or "auto" (default).
+    #[must_use]
+    pub fn image_url_with_detail(url: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self::ImageUrl {
+            image_url: ImageUrlDetail {
+                url: url.into(),
+                detail: Some(detail.into()),
+            },
+        }
+    }
+
+    /// Create image content from an `AgentImage`.
+    ///
+    /// This will use the data URL if available, otherwise the URL reference.
+    /// Returns `None` if the image has no accessible data.
+    #[must_use]
+    pub fn from_agent_image(image: &crate::multimodal::AgentImage) -> Option<Self> {
+        if let Some(url) = image.as_url() {
+            // Use URL directly for URL-based images
+            Some(Self::image_url_with_detail(url, "auto"))
+        } else if let Some(data_url) = image.to_data_url() {
+            // Use data URL for embedded images
+            Some(Self::image_url_with_detail(data_url, "auto"))
+        } else {
+            None
+        }
+    }
+
+    /// Create a new audio content from base64 data.
+    #[must_use]
+    pub fn audio(audio: impl Into<String>) -> Self {
+        Self::Audio {
+            audio: audio.into(),
+            sample_rate: None,
+            format: None,
+        }
+    }
+
+    /// Create a new audio content with sample rate.
+    #[must_use]
+    pub fn audio_with_sample_rate(audio: impl Into<String>, sample_rate: u32) -> Self {
+        Self::Audio {
+            audio: audio.into(),
+            sample_rate: Some(sample_rate),
+            format: None,
+        }
+    }
+
+    /// Create audio content from an `AgentAudio`.
+    #[must_use]
+    pub fn from_agent_audio(audio: &crate::multimodal::AgentAudio) -> Option<Self> {
+        audio.to_base64().map(|b64| Self::Audio {
+            audio: b64.into_owned(),
+            sample_rate: Some(audio.sample_rate()),
+            format: Some(audio.format().extension().to_string()),
+        })
     }
 
     /// Get the text content if this is a text message.
@@ -98,6 +191,24 @@ impl MessageContent {
             Self::Text { text } => Some(text),
             _ => None,
         }
+    }
+
+    /// Check if this is an image content (either embedded or URL).
+    #[must_use]
+    pub const fn is_image(&self) -> bool {
+        matches!(self, Self::Image { .. } | Self::ImageUrl { .. })
+    }
+
+    /// Check if this is an audio content.
+    #[must_use]
+    pub const fn is_audio(&self) -> bool {
+        matches!(self, Self::Audio { .. })
+    }
+
+    /// Check if this content is multimodal (image or audio).
+    #[must_use]
+    pub const fn is_multimodal(&self) -> bool {
+        self.is_image() || self.is_audio()
     }
 }
 

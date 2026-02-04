@@ -33,6 +33,7 @@ use crate::{
     error::{AgentError, Result},
     managed_agent::{BoxedManagedAgent, ManagedAgent, ManagedAgentRegistry},
     memory::{ActionStep, AgentMemory, FinalAnswerStep, TaskStep, Timing, ToolCall},
+    multimodal::AgentImage,
     prompts::{PromptEngine, PromptTemplates, TemplateContext},
     providers::common::{GenerateOptions, Model, TokenUsage},
     tool::{BoxedTool, ToolBox},
@@ -477,6 +478,52 @@ impl Agent {
         self.run_with_args(task, HashMap::new()).await
     }
 
+    /// Run the agent with a task and images (for vision models).
+    ///
+    /// This method allows passing images along with the task for multimodal
+    /// processing with vision-capable models like GPT-4o or Claude 3.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use machi::prelude::*;
+    ///
+    /// let image = AgentImage::from_url("https://example.com/chart.png");
+    /// let result = agent.run_with_images(
+    ///     "What does this chart show?",
+    ///     vec![image]
+    /// ).await?;
+    /// ```
+    #[inline]
+    pub async fn run_with_images(&mut self, task: &str, images: Vec<AgentImage>) -> Result<Value> {
+        self.run_with_images_and_args(task, images, HashMap::new())
+            .await
+    }
+
+    /// Run the agent with a task, images, and additional context.
+    #[instrument(skip(self, images, args), fields(max_steps = self.config.max_steps, image_count = images.len()))]
+    pub async fn run_with_images_and_args(
+        &mut self,
+        task: &str,
+        images: Vec<AgentImage>,
+        args: HashMap<String, Value>,
+    ) -> Result<Value> {
+        let result = self.run_with_result_images_args(task, images, args).await;
+        match result.state {
+            RunState::Success => result.output.ok_or_else(|| {
+                AgentError::configuration("Run succeeded but no output was produced")
+            }),
+            RunState::MaxStepsReached => Err(AgentError::max_steps(
+                result.steps_taken,
+                self.config.max_steps,
+            )),
+            RunState::Interrupted => Err(AgentError::Interrupted),
+            RunState::Failed => Err(AgentError::configuration(
+                result.error.unwrap_or_else(|| "Unknown error".to_string()),
+            )),
+        }
+    }
+
     /// Run the agent with a task and additional context.
     #[instrument(skip(self, args), fields(max_steps = self.config.max_steps))]
     pub async fn run_with_args(
@@ -523,6 +570,17 @@ impl Agent {
         self.run_with_result_args(task, HashMap::new()).await
     }
 
+    /// Run the agent with images and return a detailed result.
+    #[inline]
+    pub async fn run_with_result_images(
+        &mut self,
+        task: &str,
+        images: Vec<AgentImage>,
+    ) -> RunResult {
+        self.run_with_result_images_args(task, images, HashMap::new())
+            .await
+    }
+
     /// Run the agent with additional context and return a detailed result.
     #[instrument(skip(self, args), fields(max_steps = self.config.max_steps))]
     pub async fn run_with_result_args(
@@ -530,7 +588,19 @@ impl Agent {
         task: &str,
         args: HashMap<String, Value>,
     ) -> RunResult {
-        self.prepare_run(task, args);
+        self.run_with_result_images_args(task, Vec::new(), args)
+            .await
+    }
+
+    /// Run the agent with images, additional context and return a detailed result.
+    #[instrument(skip(self, images, args), fields(max_steps = self.config.max_steps, image_count = images.len()))]
+    pub async fn run_with_result_images_args(
+        &mut self,
+        task: &str,
+        images: Vec<AgentImage>,
+        args: HashMap<String, Value>,
+    ) -> RunResult {
+        self.prepare_run_with_images(task, images, args);
         info!("Starting agent run");
 
         let timing = Timing::start_now();
@@ -856,8 +926,18 @@ impl Agent {
         Ok(StepResult::Continue)
     }
 
-    /// Prepare the agent for a new run.
+    /// Prepare the agent for a new run (without images).
     fn prepare_run(&mut self, task: &str, args: HashMap<String, Value>) {
+        self.prepare_run_with_images(task, Vec::new(), args);
+    }
+
+    /// Prepare the agent for a new run with optional images.
+    fn prepare_run_with_images(
+        &mut self,
+        task: &str,
+        images: Vec<AgentImage>,
+        args: HashMap<String, Value>,
+    ) {
         self.memory.reset();
         self.step_number = 0;
         self.interrupt_flag.store(false, Ordering::SeqCst);
@@ -881,10 +961,13 @@ impl Agent {
             text
         };
 
-        self.memory.add_step(TaskStep {
-            task: task_text,
-            task_images: None,
-        });
+        // Create task step with optional images
+        let task_step = if images.is_empty() {
+            TaskStep::new(task_text)
+        } else {
+            TaskStep::with_images(task_text, images)
+        };
+        self.memory.add_step(task_step);
     }
 
     /// Get the agent's name.

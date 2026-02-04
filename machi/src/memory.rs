@@ -3,7 +3,8 @@
 //! This module provides the memory infrastructure for agents, allowing them
 //! to track their execution history, tool calls, and observations.
 
-use crate::message::{ChatMessage, MessageRole};
+use crate::message::{ChatMessage, MessageContent, MessageRole};
+use crate::multimodal::AgentImage;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -114,20 +115,75 @@ impl MemoryStep for SystemPromptStep {
 pub struct TaskStep {
     /// The task description.
     pub task: String,
-    /// Optional images associated with the task.
-    #[serde(skip)]
-    pub task_images: Option<Vec<Vec<u8>>>,
+    /// Optional images associated with the task (for vision models).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_images: Option<Vec<AgentImage>>,
+}
+
+impl TaskStep {
+    /// Create a new task step with just a task description.
+    #[must_use]
+    pub fn new(task: impl Into<String>) -> Self {
+        Self {
+            task: task.into(),
+            task_images: None,
+        }
+    }
+
+    /// Create a new task step with images.
+    #[must_use]
+    pub fn with_images(task: impl Into<String>, images: Vec<AgentImage>) -> Self {
+        Self {
+            task: task.into(),
+            task_images: if images.is_empty() {
+                None
+            } else {
+                Some(images)
+            },
+        }
+    }
+
+    /// Add images to the task step.
+    #[must_use]
+    pub fn add_images(mut self, images: Vec<AgentImage>) -> Self {
+        self.task_images = if images.is_empty() {
+            None
+        } else {
+            Some(images)
+        };
+        self
+    }
+
+    /// Check if this task has images.
+    #[must_use]
+    pub fn has_images(&self) -> bool {
+        self.task_images
+            .as_ref()
+            .is_some_and(|imgs| !imgs.is_empty())
+    }
 }
 
 impl MemoryStep for TaskStep {
     fn to_messages(&self, _summary_mode: bool) -> Vec<ChatMessage> {
-        vec![ChatMessage::user(format!("New task:\n{}", self.task))]
+        let mut content = vec![MessageContent::text(format!("New task:\n{}", self.task))];
+
+        // Add images if present (for vision models)
+        if let Some(images) = &self.task_images {
+            for image in images {
+                if let Some(img_content) = MessageContent::from_agent_image(image) {
+                    content.push(img_content);
+                }
+            }
+        }
+
+        vec![ChatMessage::with_contents(MessageRole::User, content)]
     }
 
     fn to_value(&self) -> Value {
         serde_json::json!({
             "task": self.task,
-            "has_images": self.task_images.as_ref().is_some_and(|i| !i.is_empty())
+            "has_images": self.has_images(),
+            "image_count": self.task_images.as_ref().map(|i| i.len()).unwrap_or(0)
         })
     }
 
@@ -164,6 +220,9 @@ pub struct ActionStep {
     /// Observations from tool execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observations: Option<String>,
+    /// Images from tool observations (e.g., screenshots, generated images).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observations_images: Option<Vec<AgentImage>>,
     /// Output of the action.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action_output: Option<Value>,
@@ -173,6 +232,33 @@ pub struct ActionStep {
     /// Whether this is the final answer step.
     #[serde(default)]
     pub is_final_answer: bool,
+}
+
+impl ActionStep {
+    /// Check if this step has observation images.
+    #[must_use]
+    pub fn has_observation_images(&self) -> bool {
+        self.observations_images
+            .as_ref()
+            .is_some_and(|imgs| !imgs.is_empty())
+    }
+
+    /// Add observation images to this step.
+    pub fn add_observation_images(&mut self, images: Vec<AgentImage>) {
+        if images.is_empty() {
+            return;
+        }
+        if let Some(ref mut existing) = self.observations_images {
+            existing.extend(images);
+        } else {
+            self.observations_images = Some(images);
+        }
+    }
+
+    /// Clear observation images (useful for memory management in long runs).
+    pub fn clear_observation_images(&mut self) {
+        self.observations_images = None;
+    }
 }
 
 impl MemoryStep for ActionStep {
@@ -191,7 +277,7 @@ impl MemoryStep for ActionStep {
             let calls_str = serde_json::to_string(tool_calls).unwrap_or_default();
             messages.push(ChatMessage {
                 role: MessageRole::ToolCall,
-                content: Some(vec![crate::message::MessageContent::text(format!(
+                content: Some(vec![MessageContent::text(format!(
                     "Calling tools:\n{calls_str}"
                 ))]),
                 tool_calls: None,
@@ -199,13 +285,22 @@ impl MemoryStep for ActionStep {
             });
         }
 
-        // Add observations
+        // Add observation images (for vision models)
+        if let Some(images) = &self.observations_images {
+            let content: Vec<MessageContent> = images
+                .iter()
+                .filter_map(MessageContent::from_agent_image)
+                .collect();
+            if !content.is_empty() {
+                messages.push(ChatMessage::with_contents(MessageRole::User, content));
+            }
+        }
+
+        // Add text observations
         if let Some(obs) = &self.observations {
             messages.push(ChatMessage {
                 role: MessageRole::ToolResponse,
-                content: Some(vec![crate::message::MessageContent::text(format!(
-                    "Observation:\n{obs}"
-                ))]),
+                content: Some(vec![MessageContent::text(format!("Observation:\n{obs}"))]),
                 tool_calls: None,
                 tool_call_id: None,
             });
@@ -217,7 +312,7 @@ impl MemoryStep for ActionStep {
                 format!("Error:\n{err}\nNow let's retry: take care not to repeat previous errors!");
             messages.push(ChatMessage {
                 role: MessageRole::ToolResponse,
-                content: Some(vec![crate::message::MessageContent::text(error_msg)]),
+                content: Some(vec![MessageContent::text(error_msg)]),
                 tool_calls: None,
                 tool_call_id: None,
             });

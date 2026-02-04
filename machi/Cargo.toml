@@ -9,6 +9,7 @@ description = "A Rust implementation of smolagents - lightweight AI agents frame
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+base64.workspace = true
 bytes.workspace = true
 chrono.workspace = true
 convert_case.workspace = true

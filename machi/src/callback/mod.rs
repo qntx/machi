@@ -42,7 +42,7 @@ mod registry;
 
 pub use async_registry::{AsyncCallbackRegistry, AsyncCallbackRegistryBuilder};
 pub use builtins::{
-    LoggingConfig, MetricsCollector, MetricsSnapshot, logging_handler, metrics_handler,
+    LoggingConfig, MetricsCollector, MetricsSnapshot, RunMetrics, logging_handler, metrics_handler,
     tracing_handler,
 };
 pub use context::{CallbackContext, CallbackContextRef};

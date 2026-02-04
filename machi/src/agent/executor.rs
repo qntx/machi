@@ -35,9 +35,8 @@ impl Agent {
 
             let result = self.execute_step(&mut step).await;
             step.timing.complete();
-            self.record_telemetry(&step);
 
-            // Invoke callbacks
+            // Invoke callbacks - metrics are collected via callback handlers
             let ctx = self.create_callback_context();
             self.callbacks.callback(&step, &ctx);
 
@@ -46,7 +45,6 @@ impl Agent {
                     if let Err(e) = self.validate_answer(&answer) {
                         warn!(error = %e, "Final answer check failed");
                         step.error = Some(format!("Final answer check failed: {e}"));
-                        self.telemetry.record_error(&e.to_string());
                         self.memory.add_step(step);
                         continue;
                     }
@@ -66,7 +64,6 @@ impl Agent {
                 Err(e) => {
                     let err_msg = e.to_string();
                     step.error = Some(err_msg.clone());
-                    self.telemetry.record_error(&err_msg);
                     self.memory.add_step(step);
                     warn!(step = self.step_number, error = %e, "Step failed");
                 }
@@ -102,17 +99,6 @@ impl Agent {
             return Ok(());
         }
         self.final_answer_checks.validate(answer, &self.memory)
-    }
-
-    /// Record telemetry data for a step.
-    pub(crate) fn record_telemetry(&mut self, step: &ActionStep) {
-        if let Some(ref tool_calls) = step.tool_calls {
-            for tc in tool_calls {
-                self.telemetry.record_tool_call(&tc.name);
-            }
-        }
-        self.telemetry
-            .record_step(self.step_number, step.token_usage.as_ref());
     }
 }
 

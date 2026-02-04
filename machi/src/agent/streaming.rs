@@ -212,11 +212,10 @@ impl Agent {
                     Err(AgentError::internal("No model response"))
                 };
 
-                // Finalize step timing and telemetry
+                // Finalize step timing
                 step.timing.complete();
-                self.record_telemetry(&step);
 
-                // Invoke callbacks
+                // Invoke callbacks - metrics are collected via callback handlers
                 let ctx = self.create_callback_context();
                 self.callbacks.callback(&step, &ctx);
 

@@ -52,7 +52,6 @@ use crate::{
     multimodal::AgentImage,
     prompts::PromptRender,
     providers::common::Model,
-    telemetry::{RunMetrics, Telemetry},
     tool::ToolBox,
 };
 
@@ -76,8 +75,8 @@ pub struct Agent {
     pub(crate) state: HashMap<String, Value>,
     pub(crate) custom_instructions: Option<String>,
     pub(crate) final_answer_checks: FinalAnswerChecks,
-    pub(crate) telemetry: Telemetry,
     pub(crate) callbacks: CallbackRegistry,
+    pub(crate) run_start: std::time::Instant,
 }
 
 impl std::fmt::Debug for Agent {
@@ -199,17 +198,11 @@ impl Agent {
         self.step_number
     }
 
-    /// Get a reference to the telemetry collector.
-    #[inline]
-    pub const fn telemetry(&self) -> &Telemetry {
-        &self.telemetry
-    }
-
-    /// Get the telemetry metrics for the current/last run.
+    /// Get the elapsed time since the run started.
     #[inline]
     #[must_use]
-    pub fn metrics(&mut self) -> RunMetrics {
-        self.telemetry.complete()
+    pub fn elapsed(&self) -> std::time::Duration {
+        self.run_start.elapsed()
     }
 
     /// Request the agent to stop after the current step.
@@ -230,7 +223,7 @@ impl Agent {
         self.step_number = 0;
         self.state.clear();
         self.interrupt_flag.store(false, Ordering::SeqCst);
-        self.telemetry.reset();
+        self.run_start = std::time::Instant::now();
     }
 }
 

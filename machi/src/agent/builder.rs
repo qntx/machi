@@ -7,7 +7,6 @@ use crate::{
     memory::AgentMemory,
     prompts::{PromptRender, PromptTemplates},
     providers::common::Model,
-    telemetry::Telemetry,
     tool::{BoxedTool, ToolBox},
     tools::FinalAnswerTool,
 };
@@ -331,8 +330,8 @@ impl AgentBuilder {
             state: HashMap::new(),
             custom_instructions: self.custom_instructions,
             final_answer_checks: self.final_answer_checks,
-            telemetry: Telemetry::new(),
             callbacks: self.callbacks,
+            run_start: std::time::Instant::now(),
         })
     }
 }

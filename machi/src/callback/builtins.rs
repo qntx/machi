@@ -213,7 +213,7 @@ impl MetricsCollector {
 }
 
 /// Snapshot of metrics at a point in time.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct MetricsSnapshot {
     /// Total steps executed.
     pub steps: usize,
@@ -236,6 +236,98 @@ impl MetricsSnapshot {
     #[must_use]
     pub const fn total_tokens(&self) -> u64 {
         self.input_tokens + self.output_tokens
+    }
+
+    /// Convert to `RunMetrics` with duration.
+    #[must_use]
+    pub fn to_run_metrics(self, duration: std::time::Duration) -> RunMetrics {
+        RunMetrics {
+            steps: self.steps,
+            input_tokens: self.input_tokens,
+            output_tokens: self.output_tokens,
+            duration: Some(duration),
+            tool_calls: self.tool_calls,
+            errors: self.errors,
+        }
+    }
+}
+
+impl std::fmt::Display for MetricsSnapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Metrics:")?;
+        writeln!(f, "  Steps:      {}", self.steps)?;
+        writeln!(
+            f,
+            "  Tokens:     {} (in: {}, out: {})",
+            self.total_tokens(),
+            self.input_tokens,
+            self.output_tokens
+        )?;
+        writeln!(f, "  Tool calls: {}", self.tool_calls)?;
+        writeln!(f, "  Errors:     {}", self.errors)?;
+        Ok(())
+    }
+}
+
+/// Metrics collected during an agent run, including duration.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+pub struct RunMetrics {
+    /// Total steps executed.
+    pub steps: usize,
+    /// Total input tokens.
+    pub input_tokens: u64,
+    /// Total output tokens.
+    pub output_tokens: u64,
+    /// Total duration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<std::time::Duration>,
+    /// Tool calls made.
+    pub tool_calls: usize,
+    /// Errors encountered.
+    pub errors: usize,
+}
+
+impl RunMetrics {
+    /// Total tokens (input + output).
+    #[must_use]
+    pub const fn total_tokens(&self) -> u64 {
+        self.input_tokens + self.output_tokens
+    }
+
+    /// Tokens per second rate.
+    #[must_use]
+    pub fn tokens_per_second(&self) -> Option<f64> {
+        self.duration.map(|d| {
+            let secs = d.as_secs_f64();
+            if secs > 0.0 {
+                self.total_tokens() as f64 / secs
+            } else {
+                0.0
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for RunMetrics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Agent Run Metrics")?;
+        writeln!(f, "  Steps:      {}", self.steps)?;
+        writeln!(
+            f,
+            "  Tokens:     {} (in: {}, out: {})",
+            self.total_tokens(),
+            self.input_tokens,
+            self.output_tokens
+        )?;
+        if let Some(d) = self.duration {
+            writeln!(f, "  Duration:   {:.2}s", d.as_secs_f64())?;
+            if let Some(rate) = self.tokens_per_second() {
+                writeln!(f, "  Rate:       {rate:.1} tok/s")?;
+            }
+        }
+        writeln!(f, "  Tool calls: {}", self.tool_calls)?;
+        writeln!(f, "  Errors:     {}", self.errors)?;
+        Ok(())
     }
 }
 

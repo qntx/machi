@@ -40,7 +40,6 @@ pub mod message;
 pub mod multimodal;
 pub mod prompts;
 pub mod providers;
-pub mod telemetry;
 pub mod tool;
 pub mod tools;
 
@@ -50,7 +49,7 @@ pub mod prelude {
         Agent, AgentBuilder, AgentConfig, AgentStream, FinalAnswerChecks, RunOptions, RunResult,
         RunState, StreamEvent, StreamItem,
     };
-    // Callback system
+    // Callback system (includes metrics and logging)
     pub use crate::callback::{
         // Async callbacks
         AsyncCallbackRegistry,
@@ -59,11 +58,13 @@ pub mod prelude {
         CallbackContext,
         CallbackRegistry,
         CallbackRegistryBuilder,
-        // Utils
+        // Metrics
         LoggingConfig,
         MetricsCollector,
         MetricsSnapshot,
+        // Handlers
         Priority,
+        RunMetrics,
         logging_handler,
         metrics_handler,
         tracing_handler,
@@ -100,7 +101,6 @@ pub mod prelude {
             GPT_4O_MINI, GPT_5, GPT_5_MINI, O3, O3_MINI, O3_PRO, O4_MINI, OpenAIClient,
         },
     };
-    pub use crate::telemetry::{RunMetrics, Telemetry};
     pub use crate::tool::{
         BoxedTool, DynTool, Tool, ToolBox, ToolCallResult, ToolDefinition, ToolError, ToolResult,
     };

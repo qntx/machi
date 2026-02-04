@@ -18,7 +18,10 @@ mod builder;
 mod checks;
 mod config;
 mod events;
+mod executor;
+mod prompts_render;
 mod result;
+mod streaming;
 
 pub use builder::AgentBuilder;
 pub use checks::{FinalAnswerCheck, FinalAnswerChecks};
@@ -26,31 +29,26 @@ pub use config::AgentConfig;
 pub use events::{AgentStream, RunState, StreamEvent, StreamItem};
 pub use result::RunResult;
 
-use events::StepResult;
-
 use std::{
     collections::HashMap,
-    fmt::Write as _,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
 
-use async_stream::stream;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use serde_json::Value;
-use tracing::{debug, info, instrument, warn};
+use tracing::{info, instrument, warn};
 
 use crate::{
     callback::{CallbackContext, CallbackRegistry},
     error::{AgentError, Result},
     managed_agent::{ManagedAgent, ManagedAgentRegistry},
-    memory::{ActionStep, AgentMemory, FinalAnswerStep, TaskStep, Timing, ToolCall},
-    message::{ChatMessage, ChatMessageToolCall},
+    memory::{AgentMemory, FinalAnswerStep, TaskStep, Timing},
     multimodal::AgentImage,
-    prompts::{PromptEngine, PromptTemplates, TemplateContext},
-    providers::common::{GenerateOptions, Model},
+    prompts::{PromptEngine, PromptTemplates},
+    providers::common::Model,
     telemetry::{RunMetrics, Telemetry},
     tool::ToolBox,
 };
@@ -216,11 +214,9 @@ impl Agent {
     }
 
     /// Stream execution events with full options.
+    ///
+    /// This delegates to the streaming module for the actual implementation.
     #[instrument(skip(self, images, context), fields(max_steps = self.config.max_steps, image_count = images.len()))]
-    #[expect(
-        tail_expr_drop_order,
-        reason = "stream yields control flow intentionally"
-    )]
     pub fn stream_with_options(
         &mut self,
         task: &str,
@@ -228,214 +224,7 @@ impl Agent {
         context: HashMap<String, Value>,
     ) -> impl Stream<Item = StreamItem> + '_ {
         self.prepare_run(task, images, context);
-        info!("Starting streaming agent run");
-
-        stream! {
-            let mut final_answer: Option<Value> = None;
-
-            while self.step_number < self.config.max_steps {
-                if self.interrupt_flag.load(Ordering::SeqCst) {
-                    yield Err(AgentError::Interrupted);
-                    break;
-                }
-
-                self.step_number += 1;
-                let mut step = ActionStep {
-                    step_number: self.step_number,
-                    timing: Timing::start_now(),
-                    ..Default::default()
-                };
-
-                // Prepare messages and options
-                let messages = self.memory.to_messages(false);
-                step.model_input_messages = Some(messages.clone());
-                let options = GenerateOptions::new().with_tools(self.tools.definitions());
-                debug!(step = step.step_number, "Generating model response");
-
-                // Stream model response with token-level events
-                let model_result = if self.model.supports_streaming() {
-                    let stream_result = self.model.generate_stream(messages, options).await;
-                    match stream_result {
-                        Ok(mut model_stream) => {
-                            let mut deltas = Vec::new();
-                            while let Some(result) = model_stream.next().await {
-                                match result {
-                                    Ok(delta) => {
-                                        // Yield text delta for each token
-                                        if let Some(content) = &delta.content
-                                            && !content.is_empty() {
-                                                yield Ok(StreamEvent::TextDelta(content.clone()));
-                                            }
-                                        if let Some(usage) = &delta.token_usage {
-                                            step.token_usage = Some(*usage);
-                                            yield Ok(StreamEvent::TokenUsage(*usage));
-                                        }
-                                        deltas.push(delta);
-                                    }
-                                    Err(e) => {
-                                        step.error = Some(e.to_string());
-                                        yield Err(e);
-                                        break;
-                                    }
-                                }
-                            }
-                            let message = crate::message::aggregate_stream_deltas(&deltas);
-                            step.model_output_message = Some(message.clone());
-                            step.model_output = message.text_content();
-                            Ok(message)
-                        }
-                        Err(e) => Err(e),
-                    }
-                } else {
-                    match self.model.generate(messages, options).await {
-                        Ok(response) => {
-                            step.model_output_message = Some(response.message.clone());
-                            step.token_usage = response.token_usage;
-                            step.model_output = response.message.text_content();
-                            if let Some(text) = &step.model_output {
-                                yield Ok(StreamEvent::TextDelta(text.clone()));
-                            }
-                            if let Some(usage) = response.token_usage {
-                                yield Ok(StreamEvent::TokenUsage(usage));
-                            }
-                            Ok(response.message)
-                        }
-                        Err(e) => Err(e),
-                    }
-                };
-
-                // Handle model response
-                let step_result = match model_result {
-                    Ok(message) => {
-                        // Process tool calls
-                        match Self::extract_tool_calls(&step, &message) {
-                            Some(tool_calls) => {
-                                let mut observations = Vec::with_capacity(tool_calls.len());
-                                let mut got_final_answer = None;
-
-                                for tc in &tool_calls {
-                                    let tool_name = tc.name();
-                                    let tool_id = tc.id.clone();
-                                    step.tool_calls
-                                        .get_or_insert_with(Vec::new)
-                                        .push(ToolCall::new(&tool_id, tool_name, tc.arguments().clone()));
-
-                                    // Yield tool call start
-                                    yield Ok(StreamEvent::ToolCallStart {
-                                        id: tool_id.clone(),
-                                        name: tool_name.to_string(),
-                                    });
-
-                                    if tool_name == "final_answer" {
-                                        // Try parsing as FinalAnswerArgs, fallback to raw arguments
-                                        let answer = tc.parse_arguments::<crate::tools::FinalAnswerArgs>().map_or_else(|_| tc.arguments().clone(), |args| args.answer);
-                                        got_final_answer = Some(answer);
-                                        step.is_final_answer = true;
-                                        yield Ok(StreamEvent::ToolCallComplete {
-                                            id: tool_id,
-                                            name: tool_name.to_string(),
-                                            result: Ok("Final answer recorded".to_string()),
-                                        });
-                                        continue;
-                                    }
-
-                                    // Execute tool
-                                    let tool_result = self.tools.call(tool_name, tc.arguments().clone()).await;
-                                    let (result_str, tool_output) = match tool_result {
-                                        Ok(output) => {
-                                            let s = format!("Tool '{tool_name}' returned: {output}");
-                                            (Ok(s.clone()), s)
-                                        }
-                                        Err(e) => {
-                                            let s = format!("Tool '{tool_name}' failed: {e}");
-                                            step.error = Some(s.clone());
-                                            (Err(s.clone()), s)
-                                        }
-                                    };
-
-                                    yield Ok(StreamEvent::ToolCallComplete {
-                                        id: tool_id,
-                                        name: tool_name.to_string(),
-                                        result: result_str,
-                                    });
-                                    observations.push(tool_output);
-                                }
-
-                                if !observations.is_empty() {
-                                    step.observations = Some(observations.join("\n"));
-                                }
-
-                                match got_final_answer {
-                                    Some(answer) => {
-                                        step.action_output = Some(answer.clone());
-                                        Ok(StepResult::FinalAnswer(answer))
-                                    }
-                                    None => Ok(StepResult::Continue),
-                                }
-                            }
-                            None => Ok(StepResult::Continue),
-                        }
-                    }
-                    Err(e) => {
-                        step.error = Some(e.to_string());
-                        Err(e)
-                    }
-                };
-
-                // Finalize step
-                step.timing.complete();
-                self.record_telemetry(&step);
-
-                // Invoke callbacks
-                let ctx = self.create_callback_context();
-                self.callbacks.callback(&step, &ctx);
-
-                // Yield step complete
-                let step_clone = step.clone();
-                self.memory.add_step(step);
-                yield Ok(StreamEvent::StepComplete {
-                    step: self.step_number,
-                    action_step: Box::new(step_clone),
-                });
-
-                // Check result
-                match step_result {
-                    Ok(StepResult::FinalAnswer(answer)) => {
-                        // Validate answer
-                        if let Err(e) = self.validate_answer(&answer) {
-                            warn!(error = %e, "Final answer check failed");
-                            yield Ok(StreamEvent::Error(format!("Final answer check failed: {e}")));
-                            continue;
-                        }
-
-                        // Callback for final answer
-                        let final_step = FinalAnswerStep { output: answer.clone() };
-                        self.callbacks.callback(&final_step, &ctx);
-                        self.memory.add_step(FinalAnswerStep { output: answer.clone() });
-
-                        final_answer = Some(answer.clone());
-                        yield Ok(StreamEvent::FinalAnswer { answer });
-                        break;
-                    }
-                    Ok(StepResult::Continue) => {
-                        // Continue to next step
-                    }
-                    Err(e) => {
-                        warn!(step = self.step_number, error = %e, "Step failed");
-                        yield Ok(StreamEvent::Error(e.to_string()));
-                    }
-                }
-            }
-
-            // Handle max steps reached
-            if final_answer.is_none() && self.step_number >= self.config.max_steps {
-                let error_msg = format!("Maximum steps ({}) reached", self.config.max_steps);
-                self.memory.add_step(FinalAnswerStep {
-                    output: Value::String(error_msg.clone()),
-                });
-                yield Err(AgentError::max_steps(self.step_number, self.config.max_steps));
-            }
-        }
+        self.stream_execution()
     }
 
     /// Execute as a managed sub-agent.
@@ -524,7 +313,6 @@ impl Agent {
     }
 }
 
-// Private implementation details
 impl Agent {
     /// Create a callback context for the current state.
     fn create_callback_context(&self) -> CallbackContext {
@@ -623,330 +411,6 @@ impl Agent {
                 }
             }
         }
-    }
-}
-
-impl Agent {
-    async fn execute_loop(&mut self) -> Result<Value> {
-        while self.step_number < self.config.max_steps {
-            if self.interrupt_flag.load(Ordering::SeqCst) {
-                return Err(AgentError::Interrupted);
-            }
-
-            self.step_number += 1;
-            let mut step = ActionStep {
-                step_number: self.step_number,
-                timing: Timing::start_now(),
-                ..Default::default()
-            };
-
-            let result = self.execute_step(&mut step).await;
-            step.timing.complete();
-            self.record_telemetry(&step);
-
-            // Invoke callbacks
-            let ctx = self.create_callback_context();
-            self.callbacks.callback(&step, &ctx);
-
-            match result {
-                Ok(StepResult::FinalAnswer(answer)) => {
-                    if let Err(e) = self.validate_answer(&answer) {
-                        warn!(error = %e, "Final answer check failed");
-                        step.error = Some(format!("Final answer check failed: {e}"));
-                        self.telemetry.record_error(&e.to_string());
-                        self.memory.add_step(step);
-                        continue;
-                    }
-                    self.memory.add_step(step);
-
-                    // Callback for final answer
-                    let final_step = FinalAnswerStep {
-                        output: answer.clone(),
-                    };
-                    self.callbacks.callback(&final_step, &ctx);
-
-                    return Ok(answer);
-                }
-                Ok(StepResult::Continue) => {
-                    self.memory.add_step(step);
-                }
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    step.error = Some(err_msg.clone());
-                    self.telemetry.record_error(&err_msg);
-                    self.memory.add_step(step);
-                    warn!(step = self.step_number, error = %e, "Step failed");
-                }
-            }
-        }
-
-        Err(AgentError::max_steps(
-            self.step_number,
-            self.config.max_steps,
-        ))
-    }
-
-    async fn execute_step(&self, step: &mut ActionStep) -> Result<StepResult> {
-        let messages = self.memory.to_messages(false);
-        step.model_input_messages = Some(messages.clone());
-
-        let options = GenerateOptions::new().with_tools(self.tools.definitions());
-        debug!(step = step.step_number, "Generating model response");
-
-        let message = self.generate_response(messages, options, step).await?;
-        self.process_response(step, &message).await
-    }
-
-    fn validate_answer(&self, answer: &Value) -> Result<()> {
-        if self.final_answer_checks.is_empty() {
-            return Ok(());
-        }
-        self.final_answer_checks.validate(answer, &self.memory)
-    }
-
-    fn record_telemetry(&mut self, step: &ActionStep) {
-        if let Some(ref tool_calls) = step.tool_calls {
-            for tc in tool_calls {
-                self.telemetry.record_tool_call(&tc.name);
-            }
-        }
-        self.telemetry
-            .record_step(self.step_number, step.token_usage.as_ref());
-    }
-}
-
-impl Agent {
-    async fn generate_response(
-        &self,
-        messages: Vec<ChatMessage>,
-        options: GenerateOptions,
-        step: &mut ActionStep,
-    ) -> Result<ChatMessage> {
-        if self.model.supports_streaming() {
-            let mut stream = self.model.generate_stream(messages, options).await?;
-            let mut deltas = Vec::new();
-
-            while let Some(result) = stream.next().await {
-                match result {
-                    Ok(delta) => {
-                        if let Some(usage) = &delta.token_usage {
-                            step.token_usage = Some(*usage);
-                        }
-                        deltas.push(delta);
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-
-            let message = crate::message::aggregate_stream_deltas(&deltas);
-            step.model_output_message = Some(message.clone());
-            step.model_output = message.text_content();
-            Ok(message)
-        } else {
-            let response = self.model.generate(messages, options).await?;
-            step.model_output_message = Some(response.message.clone());
-            step.token_usage = response.token_usage;
-            step.model_output = response.message.text_content();
-            Ok(response.message)
-        }
-    }
-
-    async fn process_response(
-        &self,
-        step: &mut ActionStep,
-        message: &ChatMessage,
-    ) -> Result<StepResult> {
-        let Some(tool_calls) = Self::extract_tool_calls(step, message) else {
-            return Ok(StepResult::Continue);
-        };
-
-        let mut observations = Vec::with_capacity(tool_calls.len());
-        let mut final_answer = None;
-
-        for tc in &tool_calls {
-            let tool_name = tc.name();
-            step.tool_calls
-                .get_or_insert_with(Vec::new)
-                .push(ToolCall::new(&tc.id, tool_name, tc.arguments().clone()));
-
-            if tool_name == "final_answer" {
-                // Try parsing as FinalAnswerArgs, fallback to raw arguments
-                let answer = tc
-                    .parse_arguments::<crate::tools::FinalAnswerArgs>()
-                    .map_or_else(|_| tc.arguments().clone(), |args| args.answer);
-                final_answer = Some(answer);
-                step.is_final_answer = true;
-                continue;
-            }
-
-            let observation = self.execute_tool(tool_name, tc.arguments().clone()).await;
-            if let Err(ref e) = observation {
-                step.error = Some(e.clone());
-            }
-            observations.push(observation.unwrap_or_else(|e| e));
-        }
-
-        if !observations.is_empty() {
-            step.observations = Some(observations.join("\n"));
-        }
-
-        match final_answer {
-            Some(answer) => {
-                step.action_output = Some(answer.clone());
-                Ok(StepResult::FinalAnswer(answer))
-            }
-            None => Ok(StepResult::Continue),
-        }
-    }
-
-    fn extract_tool_calls(
-        step: &ActionStep,
-        message: &ChatMessage,
-    ) -> Option<Vec<ChatMessageToolCall>> {
-        if let Some(tc) = &message.tool_calls {
-            return Some(tc.clone());
-        }
-
-        if let Some(text) = &step.model_output {
-            if let Some(parsed) = Self::parse_text_tool_call(text) {
-                debug!(step = step.step_number, tool = %parsed.name(), "Parsed tool call from text");
-                return Some(vec![parsed]);
-            }
-            debug!(step = step.step_number, output = %text, "Model returned text without tool call");
-        } else {
-            debug!(step = step.step_number, "Model returned empty response");
-        }
-
-        None
-    }
-
-    async fn execute_tool(&self, name: &str, args: Value) -> std::result::Result<String, String> {
-        match self.tools.call(name, args).await {
-            Ok(result) => Ok(format!("Tool '{name}' returned: {result}")),
-            Err(e) => Err(format!("Tool '{name}' failed: {e}")),
-        }
-    }
-
-    fn parse_text_tool_call(text: &str) -> Option<ChatMessageToolCall> {
-        let json_str = text.find('{').map(|start| {
-            let mut depth = 0;
-            let mut end = start;
-            for (i, c) in text[start..].char_indices() {
-                match c {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end = start + i + 1;
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            &text[start..end]
-        })?;
-
-        let json: Value = serde_json::from_str(json_str).ok()?;
-        let name = json.get("name")?.as_str()?;
-        let arguments = json
-            .get("arguments")
-            .cloned()
-            .unwrap_or_else(|| Value::Object(serde_json::Map::default()));
-
-        Some(ChatMessageToolCall::new(
-            format!("text_parsed_{}", uuid::Uuid::new_v4().simple()),
-            name.to_string(),
-            arguments,
-        ))
-    }
-}
-
-impl Agent {
-    fn render_system_prompt(&self) -> String {
-        let defs = self.tools.definitions();
-        let managed_agent_infos = self.managed_agents.infos();
-        let ctx = TemplateContext::new()
-            .with_tools(&defs)
-            .with_managed_agents(&managed_agent_infos)
-            .with_custom_instructions_opt(self.custom_instructions.as_deref());
-
-        self.prompt_engine
-            .render(&self.prompt_templates.system_prompt, &ctx)
-            .unwrap_or_else(|e| {
-                warn!(error = %e, "Failed to render system prompt template, using fallback");
-                self.default_system_prompt()
-            })
-    }
-
-    fn default_system_prompt(&self) -> String {
-        let defs = self.tools.definitions();
-        let mut result = String::with_capacity(512 + defs.len() * 64);
-
-        result.push_str(
-            "You are a helpful AI assistant that can use tools to accomplish tasks.\n\n\
-             Available tools:\n",
-        );
-
-        for def in &defs {
-            let _ = writeln!(result, "- {}: {}", def.name, def.description);
-        }
-
-        result.push_str(
-            "\nWhen you need to use a tool, respond with a tool call. \
-             When you have the final answer, use the 'final_answer' tool to provide it.\n\n\
-             Think step by step about what you need to do to accomplish the task.",
-        );
-
-        result
-    }
-
-    fn format_task_prompt(&self, name: &str, task: &str) -> String {
-        let ctx = TemplateContext::new().with_name(name).with_task(task);
-
-        self.prompt_engine
-            .render(&self.prompt_templates.managed_agent.task, &ctx)
-            .unwrap_or_else(|_| {
-                format!(
-                    "You're a helpful agent named '{name}'.\n\
-                     You have been submitted this task by your manager.\n\
-                     ---\n\
-                     Task:\n{task}\n\
-                     ---\n\
-                     You're helping your manager solve a wider task: so make sure to not provide \
-                     a one-line answer, but give as much information as possible."
-                )
-            })
-    }
-
-    fn format_report(&self, name: &str, final_answer: &str) -> String {
-        let ctx = TemplateContext::new()
-            .with_name(name)
-            .with_final_answer(final_answer);
-
-        self.prompt_engine
-            .render(&self.prompt_templates.managed_agent.report, &ctx)
-            .unwrap_or_else(|_| {
-                format!(
-                    "Here is the final answer from your managed agent '{name}':\n{final_answer}"
-                )
-            })
-    }
-
-    fn append_summary(&self, answer: &mut String) {
-        answer.push_str(
-            "\n\nFor more detail, find below a summary of this agent's work:\n<summary_of_work>\n",
-        );
-        for msg in self.memory.to_messages(true) {
-            if let Some(content) = msg.text_content() {
-                if content.len() > 1000 {
-                    let _ = write!(answer, "\n{}...\n---", &content[..1000]);
-                } else {
-                    let _ = write!(answer, "\n{content}\n---");
-                }
-            }
-        }
-        answer.push_str("\n</summary_of_work>");
     }
 }
 

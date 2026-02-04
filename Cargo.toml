@@ -4,12 +4,15 @@ default-members = ["machi"]
 resolver = "3"
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/pyroth/machi"
 
 [workspace.dependencies]
+machi = { version = "0.4.1", path = "machi" }
+machi-derive = { version = "0.4.1", path = "machi-derive" }
+
 anyhow = "1.0"
 async-trait = "0.1"
 base64 = "0.22"
@@ -21,8 +24,6 @@ bytes = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 convert_case = "0.11.0"
 futures = "0.3"
-machi = { version = "0.4.0", path = "machi" }
-machi-derive = { version = "0.4.0", path = "machi-derive" }
 regex = "1.11"
 scraper = "0.25.0"
 reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }

@@ -27,7 +27,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .max_steps(3)
         .build();
 
-    let mut stream = std::pin::pin!(agent.run_stream("What is 15 + 27?"));
+    let mut stream = std::pin::pin!(agent.stream("What is 15 + 27?"));
 
     while let Some(event) = stream.next().await {
         match event {

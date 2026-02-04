@@ -64,7 +64,7 @@ pub type AgentStream = Pin<Box<dyn Stream<Item = StreamItem> + Send>>;
 
 /// Result of a streaming step execution.
 #[derive(Debug)]
-pub(crate) enum StepResult {
+pub enum StepResult {
     /// Continue to next step.
     Continue,
     /// Agent produced a final answer.

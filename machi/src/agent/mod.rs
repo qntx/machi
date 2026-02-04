@@ -103,108 +103,101 @@ impl Agent {
         self.run_with_args(task, HashMap::new()).await
     }
 
-    /// Run the agent with a task and images (for vision models).
+    /// Run the agent with images (for vision models).
     #[inline]
     pub async fn run_with_images(&mut self, task: &str, images: Vec<AgentImage>) -> Result<Value> {
-        self.run_with_images_and_args(task, images, HashMap::new())
-            .await
+        self.invoke(task, images, HashMap::new()).await
     }
 
-    /// Run the agent with a task and additional context.
+    /// Run the agent with additional context arguments.
     #[instrument(skip(self, args), fields(max_steps = self.config.max_steps))]
     pub async fn run_with_args(
         &mut self,
         task: &str,
         args: HashMap<String, Value>,
     ) -> Result<Value> {
-        self.run_with_result_args(task, args)
+        self.execute_with_args(task, args)
             .await
             .into_result(self.config.max_steps)
     }
 
-    /// Run the agent with a task, images, and additional context.
+    /// Run the agent with images and context arguments.
     #[instrument(skip(self, images, args), fields(max_steps = self.config.max_steps, image_count = images.len()))]
-    pub async fn run_with_images_and_args(
+    pub async fn invoke(
         &mut self,
         task: &str,
         images: Vec<AgentImage>,
         args: HashMap<String, Value>,
     ) -> Result<Value> {
-        self.run_with_result_images_args(task, images, args)
+        self.execute_full(task, images, args)
             .await
             .into_result(self.config.max_steps)
     }
 
-    /// Run the agent and return a detailed [`RunResult`].
+    /// Execute and return detailed [`RunResult`].
     #[inline]
-    pub async fn run_with_result(&mut self, task: &str) -> RunResult {
-        self.run_with_result_args(task, HashMap::new()).await
+    pub async fn execute(&mut self, task: &str) -> RunResult {
+        self.execute_with_args(task, HashMap::new()).await
     }
 
-    /// Run the agent with images and return a detailed [`RunResult`].
+    /// Execute with images and return detailed [`RunResult`].
     #[inline]
-    pub async fn run_with_result_images(
-        &mut self,
-        task: &str,
-        images: Vec<AgentImage>,
-    ) -> RunResult {
-        self.run_with_result_images_args(task, images, HashMap::new())
-            .await
+    pub async fn execute_with_images(&mut self, task: &str, images: Vec<AgentImage>) -> RunResult {
+        self.execute_full(task, images, HashMap::new()).await
     }
 
-    /// Run the agent with additional context and return a detailed [`RunResult`].
+    /// Execute with context arguments and return detailed [`RunResult`].
     #[instrument(skip(self, args), fields(max_steps = self.config.max_steps))]
-    pub async fn run_with_result_args(
+    pub async fn execute_with_args(
         &mut self,
         task: &str,
         args: HashMap<String, Value>,
     ) -> RunResult {
-        self.run_with_result_images_args(task, Vec::new(), args)
-            .await
+        self.execute_full(task, Vec::new(), args).await
     }
 
-    /// Run the agent with images, additional context and return a detailed [`RunResult`].
+    /// Execute with images and context arguments, return detailed [`RunResult`].
     #[instrument(skip(self, images, args), fields(max_steps = self.config.max_steps, image_count = images.len()))]
-    pub async fn run_with_result_images_args(
+    pub async fn execute_full(
         &mut self,
         task: &str,
         images: Vec<AgentImage>,
         args: HashMap<String, Value>,
     ) -> RunResult {
-        self.prepare_run(task, images, args);
+        self.init_run(task, images, args);
         info!("Starting agent run");
 
         let timing = Timing::start_now();
-        let result = self.execution_loop().await;
+        let result = self.step_loop().await;
         let mut final_timing = timing;
         final_timing.complete();
 
-        self.build_run_result(result, final_timing)
+        self.finalize(result, final_timing)
     }
 
-    /// Run the agent with streaming output.
+    /// Stream execution events.
     #[instrument(skip(self), fields(max_steps = self.config.max_steps))]
-    pub fn run_stream(&mut self, task: &str) -> impl Stream<Item = StreamItem> + '_ {
-        self.run_stream_with_args(task, HashMap::new())
+    pub fn stream(&mut self, task: &str) -> impl Stream<Item = StreamItem> + '_ {
+        self.stream_with_args(task, HashMap::new())
     }
 
-    /// Run the agent with streaming output and additional context.
+    /// Stream execution events with context arguments.
     #[instrument(skip(self, args), fields(max_steps = self.config.max_steps))]
     #[expect(
         tail_expr_drop_order,
         reason = "stream yields control flow intentionally"
     )]
-    pub fn run_stream_with_args(
+    pub fn stream_with_args(
         &mut self,
         task: &str,
         args: HashMap<String, Value>,
     ) -> impl Stream<Item = StreamItem> + '_ {
-        self.prepare_run(task, Vec::new(), args);
+        self.init_run(task, Vec::new(), args);
         info!("Starting streaming agent run");
 
         stream! {
             loop {
-                match self.next_stream_event().await {
+                match self.poll_event().await {
                     Some(Ok(event)) => {
                         let is_final = matches!(event, StreamEvent::FinalAnswer { .. });
                         yield Ok(event);
@@ -222,10 +215,10 @@ impl Agent {
         }
     }
 
-    /// Run the agent as a managed agent (callable by parent agent).
-    pub async fn run_as_managed(&mut self, task: &str) -> Result<String> {
+    /// Execute as a managed sub-agent.
+    pub async fn call_as_managed(&mut self, task: &str) -> Result<String> {
         let agent_name = self.config.name.clone().unwrap_or_else(|| "agent".into());
-        let full_task = self.format_managed_agent_task(&agent_name, task);
+        let full_task = self.format_task_prompt(&agent_name, task);
         let result: Value = self.run(&full_task).await?;
 
         let report = match result {
@@ -234,10 +227,10 @@ impl Agent {
             other => other.to_string(),
         };
 
-        let mut answer = self.format_managed_agent_report(&agent_name, &report);
+        let mut answer = self.format_report(&agent_name, &report);
 
         if self.config.provide_run_summary.unwrap_or(false) {
-            self.append_run_summary(&mut answer);
+            self.append_summary(&mut answer);
         }
 
         Ok(answer)
@@ -309,19 +302,19 @@ impl Agent {
 }
 
 impl Agent {
-    fn prepare_run(&mut self, task: &str, images: Vec<AgentImage>, args: HashMap<String, Value>) {
+    fn init_run(&mut self, task: &str, images: Vec<AgentImage>, args: HashMap<String, Value>) {
         self.memory.reset();
         self.step_number = 0;
         self.interrupt_flag.store(false, Ordering::SeqCst);
         self.state = args;
 
-        self.system_prompt = self.build_system_prompt();
+        self.system_prompt = self.render_system_prompt();
         self.memory
             .system_prompt
             .system_prompt
             .clone_from(&self.system_prompt);
 
-        let task_text = self.build_task_text(task);
+        let task_text = self.format_task(task);
         let task_step = if images.is_empty() {
             TaskStep::new(task_text)
         } else {
@@ -330,7 +323,7 @@ impl Agent {
         self.memory.add_step(task_step);
     }
 
-    fn build_task_text(&self, task: &str) -> String {
+    fn format_task(&self, task: &str) -> String {
         if self.state.is_empty() {
             task.into()
         } else {
@@ -343,7 +336,7 @@ impl Agent {
         }
     }
 
-    fn build_run_result(&mut self, result: Result<Value>, timing: Timing) -> RunResult {
+    fn finalize(&mut self, result: Result<Value>, timing: Timing) -> RunResult {
         let token_usage = self.memory.total_token_usage();
         let steps_taken = self.step_number;
 
@@ -396,8 +389,10 @@ impl Agent {
             }
         }
     }
+}
 
-    async fn execution_loop(&mut self) -> Result<Value> {
+impl Agent {
+    async fn step_loop(&mut self) -> Result<Value> {
         while self.step_number < self.config.max_steps {
             if self.interrupt_flag.load(Ordering::SeqCst) {
                 return Err(AgentError::Interrupted);
@@ -410,13 +405,13 @@ impl Agent {
                 ..Default::default()
             };
 
-            let result = self.execute_step(&mut step).await;
+            let result = self.run_step(&mut step).await;
             step.timing.complete();
-            self.record_step_telemetry(&step);
+            self.record_telemetry(&step);
 
             match result {
                 Ok(StepResult::FinalAnswer(answer)) => {
-                    if let Err(e) = self.validate_final_answer(&answer) {
+                    if let Err(e) = self.check_answer(&answer) {
                         warn!(error = %e, "Final answer check failed");
                         step.error = Some(format!("Final answer check failed: {e}"));
                         self.telemetry.record_error(&e.to_string());
@@ -445,20 +440,90 @@ impl Agent {
         ))
     }
 
-    async fn execute_step(&self, step: &mut ActionStep) -> Result<StepResult> {
+    async fn run_step(&self, step: &mut ActionStep) -> Result<StepResult> {
         let messages = self.memory.to_messages(false);
         step.model_input_messages = Some(messages.clone());
 
         let options = GenerateOptions::new().with_tools(self.tools.definitions());
         debug!(step = step.step_number, "Generating model response");
 
-        let message = self
-            .generate_model_response(messages, options, step)
-            .await?;
-        self.process_model_response(step, &message).await
+        let message = self.call_model(messages, options, step).await?;
+        self.handle_response(step, &message).await
     }
 
-    async fn generate_model_response(
+    async fn poll_event(&mut self) -> Option<StreamItem> {
+        if self.step_number >= self.config.max_steps {
+            self.memory.add_step(FinalAnswerStep {
+                output: Value::String("Maximum steps reached".into()),
+            });
+            return Some(Err(AgentError::max_steps(
+                self.step_number,
+                self.config.max_steps,
+            )));
+        }
+
+        if self.interrupt_flag.load(Ordering::SeqCst) {
+            return Some(Err(AgentError::Interrupted));
+        }
+
+        self.step_number += 1;
+        let mut step = ActionStep {
+            step_number: self.step_number,
+            timing: Timing::start_now(),
+            ..Default::default()
+        };
+
+        let result = self.run_step(&mut step).await;
+        step.timing.complete();
+
+        match result {
+            Ok(StepResult::Continue) => {
+                let step_clone = step.clone();
+                self.memory.add_step(step);
+                Some(Ok(StreamEvent::StepComplete {
+                    step: self.step_number,
+                    action_step: Box::new(step_clone),
+                }))
+            }
+            Ok(StepResult::FinalAnswer(answer)) => {
+                step.is_final_answer = true;
+                step.action_output = Some(answer.clone());
+                self.memory.add_step(step);
+                self.memory.add_step(FinalAnswerStep {
+                    output: answer.clone(),
+                });
+                info!("Agent completed successfully");
+                Some(Ok(StreamEvent::FinalAnswer { answer }))
+            }
+            Err(e) => {
+                step.error = Some(e.to_string());
+                self.memory.add_step(step);
+                warn!(step = self.step_number, error = %e, "Step failed");
+                Some(Ok(StreamEvent::Error(e.to_string())))
+            }
+        }
+    }
+
+    fn check_answer(&self, answer: &Value) -> Result<()> {
+        if self.final_answer_checks.is_empty() {
+            return Ok(());
+        }
+        self.final_answer_checks.validate(answer, &self.memory)
+    }
+
+    fn record_telemetry(&mut self, step: &ActionStep) {
+        if let Some(ref tool_calls) = step.tool_calls {
+            for tc in tool_calls {
+                self.telemetry.record_tool_call(&tc.name);
+            }
+        }
+        self.telemetry
+            .record_step(self.step_number, step.token_usage.as_ref());
+    }
+}
+
+impl Agent {
+    async fn call_model(
         &self,
         messages: Vec<ChatMessage>,
         options: GenerateOptions,
@@ -493,12 +558,12 @@ impl Agent {
         }
     }
 
-    async fn process_model_response(
+    async fn handle_response(
         &self,
         step: &mut ActionStep,
         message: &ChatMessage,
     ) -> Result<StepResult> {
-        let tool_calls = self.extract_tool_calls(step, message)?;
+        let tool_calls = self.get_tool_calls(step, message)?;
 
         let Some(tool_calls) = tool_calls else {
             return Ok(StepResult::Continue);
@@ -521,7 +586,7 @@ impl Agent {
                 continue;
             }
 
-            let observation = self.execute_tool(tool_name, tc.arguments().clone()).await;
+            let observation = self.call_tool(tool_name, tc.arguments().clone()).await;
             if let Err(ref e) = observation {
                 step.error = Some(e.clone());
             }
@@ -541,7 +606,7 @@ impl Agent {
         }
     }
 
-    fn extract_tool_calls(
+    fn get_tool_calls(
         &self,
         step: &ActionStep,
         message: &ChatMessage,
@@ -551,7 +616,7 @@ impl Agent {
         }
 
         if let Some(text) = &step.model_output {
-            if let Some(parsed) = Self::parse_tool_call_from_text(text) {
+            if let Some(parsed) = Self::parse_text_tool_call(text) {
                 debug!(step = step.step_number, tool = %parsed.name(), "Parsed tool call from text");
                 return Ok(Some(vec![parsed]));
             }
@@ -563,84 +628,14 @@ impl Agent {
         Ok(None)
     }
 
-    async fn execute_tool(&self, name: &str, args: Value) -> std::result::Result<String, String> {
+    async fn call_tool(&self, name: &str, args: Value) -> std::result::Result<String, String> {
         match self.tools.call(name, args).await {
             Ok(result) => Ok(format!("Tool '{name}' returned: {result}")),
             Err(e) => Err(format!("Tool '{name}' failed: {e}")),
         }
     }
 
-    fn validate_final_answer(&self, answer: &Value) -> Result<()> {
-        if self.final_answer_checks.is_empty() {
-            return Ok(());
-        }
-        self.final_answer_checks.validate(answer, &self.memory)
-    }
-
-    fn record_step_telemetry(&mut self, step: &ActionStep) {
-        if let Some(ref tool_calls) = step.tool_calls {
-            for tc in tool_calls {
-                self.telemetry.record_tool_call(&tc.name);
-            }
-        }
-        self.telemetry
-            .record_step(self.step_number, step.token_usage.as_ref());
-    }
-
-    async fn next_stream_event(&mut self) -> Option<StreamItem> {
-        if self.step_number >= self.config.max_steps {
-            self.memory.add_step(FinalAnswerStep {
-                output: Value::String("Maximum steps reached".into()),
-            });
-            return Some(Err(AgentError::max_steps(
-                self.step_number,
-                self.config.max_steps,
-            )));
-        }
-
-        if self.interrupt_flag.load(Ordering::SeqCst) {
-            return Some(Err(AgentError::Interrupted));
-        }
-
-        self.step_number += 1;
-        let mut step = ActionStep {
-            step_number: self.step_number,
-            timing: Timing::start_now(),
-            ..Default::default()
-        };
-
-        let result = self.execute_step(&mut step).await;
-        step.timing.complete();
-
-        match result {
-            Ok(StepResult::Continue) => {
-                let step_clone = step.clone();
-                self.memory.add_step(step);
-                Some(Ok(StreamEvent::StepComplete {
-                    step: self.step_number,
-                    action_step: Box::new(step_clone),
-                }))
-            }
-            Ok(StepResult::FinalAnswer(answer)) => {
-                step.is_final_answer = true;
-                step.action_output = Some(answer.clone());
-                self.memory.add_step(step);
-                self.memory.add_step(FinalAnswerStep {
-                    output: answer.clone(),
-                });
-                info!("Agent completed successfully");
-                Some(Ok(StreamEvent::FinalAnswer { answer }))
-            }
-            Err(e) => {
-                step.error = Some(e.to_string());
-                self.memory.add_step(step);
-                warn!(step = self.step_number, error = %e, "Step failed");
-                Some(Ok(StreamEvent::Error(e.to_string())))
-            }
-        }
-    }
-
-    fn parse_tool_call_from_text(text: &str) -> Option<ChatMessageToolCall> {
+    fn parse_text_tool_call(text: &str) -> Option<ChatMessageToolCall> {
         let json_str = text.find('{').map(|start| {
             let mut depth = 0;
             let mut end = start;
@@ -673,8 +668,10 @@ impl Agent {
             arguments,
         ))
     }
+}
 
-    fn build_system_prompt(&self) -> String {
+impl Agent {
+    fn render_system_prompt(&self) -> String {
         let defs = self.tools.definitions();
         let managed_agent_infos = self.managed_agents.infos();
         let ctx = TemplateContext::new()
@@ -686,11 +683,11 @@ impl Agent {
             .render(&self.prompt_templates.system_prompt, &ctx)
             .unwrap_or_else(|e| {
                 warn!(error = %e, "Failed to render system prompt template, using fallback");
-                self.build_fallback_system_prompt()
+                self.fallback_prompt()
             })
     }
 
-    fn build_fallback_system_prompt(&self) -> String {
+    fn fallback_prompt(&self) -> String {
         let defs = self.tools.definitions();
         let mut result = String::with_capacity(512 + defs.len() * 64);
 
@@ -712,7 +709,7 @@ impl Agent {
         result
     }
 
-    fn format_managed_agent_task(&self, name: &str, task: &str) -> String {
+    fn format_task_prompt(&self, name: &str, task: &str) -> String {
         let ctx = TemplateContext::new().with_name(name).with_task(task);
 
         self.prompt_engine
@@ -730,7 +727,7 @@ impl Agent {
             })
     }
 
-    fn format_managed_agent_report(&self, name: &str, final_answer: &str) -> String {
+    fn format_report(&self, name: &str, final_answer: &str) -> String {
         let ctx = TemplateContext::new()
             .with_name(name)
             .with_final_answer(final_answer);
@@ -744,7 +741,7 @@ impl Agent {
             })
     }
 
-    fn append_run_summary(&self, answer: &mut String) {
+    fn append_summary(&self, answer: &mut String) {
         answer.push_str(
             "\n\nFor more detail, find below a summary of this agent's work:\n<summary_of_work>\n",
         );
@@ -781,7 +778,7 @@ impl ManagedAgent for Agent {
     ) -> Result<String> {
         let agent_name = ManagedAgent::name(self).to_string();
         let agent_desc = ManagedAgent::description(self).to_string();
-        let _full_task = self.format_managed_agent_task(&agent_name, task);
+        let _full_task = self.format_task_prompt(&agent_name, task);
 
         let report = format!(
             "### 1. Task outcome (short version):\n\
@@ -792,7 +789,7 @@ impl ManagedAgent for Agent {
              Agent description: {agent_desc}"
         );
 
-        Ok(self.format_managed_agent_report(&agent_name, &report))
+        Ok(self.format_report(&agent_name, &report))
     }
 
     fn provide_run_summary(&self) -> bool {

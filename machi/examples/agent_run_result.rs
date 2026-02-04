@@ -30,7 +30,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .final_answer_checks(FinalAnswerChecks::new().not_null().not_empty())
         .build();
 
-    let result = agent.run_with_result("What is 100 divided by 4?").await;
+    let result = agent.execute("What is 100 divided by 4?").await;
 
     println!("{}", result.summary());
 

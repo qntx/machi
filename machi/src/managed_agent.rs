@@ -210,7 +210,7 @@ impl ManagedAgentTool {
 
     /// Get the agent info for prompt generation.
     #[must_use]
-    pub fn agent_info(&self) -> &ManagedAgentInfo {
+    pub const fn agent_info(&self) -> &ManagedAgentInfo {
         &self.info
     }
 }
@@ -526,7 +526,15 @@ mod tests {
             "task": "Do something"
         });
 
-        let result = tool.call_json(args).await.unwrap();
-        assert!(result.as_str().unwrap().contains("Do something"));
+        let result = tool
+            .call_json(args)
+            .await
+            .expect("tool call should succeed");
+        assert!(
+            result
+                .as_str()
+                .expect("result should be a string")
+                .contains("Do something")
+        );
     }
 }

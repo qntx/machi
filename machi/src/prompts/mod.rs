@@ -94,10 +94,10 @@ mod tests {
 
         let ctx = TemplateContext::new().with_tools(&tools);
 
-        let template = r#"Tools:
+        let template = r"Tools:
 {%- for tool in tools %}
 - {{ tool.name }}: {{ tool.description }}
-{%- endfor %}"#;
+{%- endfor %}";
 
         let result = engine.render(template, &ctx).expect("render failed");
         assert!(result.contains("calculator: Performs math calculations"));

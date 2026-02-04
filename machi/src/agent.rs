@@ -25,7 +25,7 @@ use std::{
 };
 
 use async_stream::stream;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use serde_json::Value;
 use tracing::{debug, info, instrument, warn};
 
@@ -104,8 +104,8 @@ pub enum StreamEvent {
     StepComplete {
         /// Step number.
         step: usize,
-        /// The completed action step data.
-        action_step: ActionStep,
+        /// The completed action step data (boxed to reduce enum size).
+        action_step: Box<ActionStep>,
     },
 
     /// The agent has produced a final answer.
@@ -189,7 +189,7 @@ impl RunResult {
 
     /// Get the output value, if available.
     #[must_use]
-    pub fn output(&self) -> Option<&Value> {
+    pub const fn output(&self) -> Option<&Value> {
         self.output.as_ref()
     }
 
@@ -257,9 +257,9 @@ impl FinalAnswerChecks {
         Self { checks: Vec::new() }
     }
 
-    /// Add a check function.
+    /// Add a check function to the validation chain.
     #[must_use]
-    pub fn add<F>(mut self, check: F) -> Self
+    pub fn with_check<F>(mut self, check: F) -> Self
     where
         F: Fn(&Value, &AgentMemory) -> Result<()> + Send + Sync + 'static,
     {
@@ -270,7 +270,7 @@ impl FinalAnswerChecks {
     /// Add a check that the answer is not null.
     #[must_use]
     pub fn not_null(self) -> Self {
-        self.add(|answer, _| {
+        self.with_check(|answer, _| {
             if answer.is_null() {
                 Err(AgentError::configuration("Final answer cannot be null"))
             } else {
@@ -282,11 +282,11 @@ impl FinalAnswerChecks {
     /// Add a check that the answer is not an empty string.
     #[must_use]
     pub fn not_empty(self) -> Self {
-        self.add(|answer, _| {
-            if let Some(s) = answer.as_str() {
-                if s.trim().is_empty() {
-                    return Err(AgentError::configuration("Final answer cannot be empty"));
-                }
+        self.with_check(|answer, _| {
+            if let Some(s) = answer.as_str()
+                && s.trim().is_empty()
+            {
+                return Err(AgentError::configuration("Final answer cannot be empty"));
             }
             Ok(())
         })
@@ -296,14 +296,14 @@ impl FinalAnswerChecks {
     #[must_use]
     pub fn contains(self, substring: impl Into<String>) -> Self {
         let substring = substring.into();
-        self.add(move |answer, _| {
+        self.with_check(move |answer, _| {
             let text = answer.to_string();
-            if !text.contains(&substring) {
+            if text.contains(&substring) {
+                Ok(())
+            } else {
                 Err(AgentError::configuration(format!(
                     "Final answer must contain '{substring}'"
                 )))
-            } else {
-                Ok(())
             }
         })
     }
@@ -612,14 +612,14 @@ impl Agent {
             match result {
                 Ok(Some(answer)) => {
                     // Run final answer checks
-                    if !self.final_answer_checks.is_empty() {
-                        if let Err(e) = self.final_answer_checks.validate(&answer, &self.memory) {
-                            warn!(error = %e, "Final answer check failed");
-                            step.error = Some(format!("Final answer check failed: {e}"));
-                            self.memory.add_step(step);
-                            // Continue to next step instead of failing
-                            continue;
-                        }
+                    if !self.final_answer_checks.is_empty()
+                        && let Err(e) = self.final_answer_checks.validate(&answer, &self.memory)
+                    {
+                        warn!(error = %e, "Final answer check failed");
+                        step.error = Some(format!("Final answer check failed: {e}"));
+                        self.memory.add_step(step);
+                        // Continue to next step instead of failing
+                        continue;
                     }
                     self.memory.add_step(step);
                     return Ok(answer);
@@ -737,7 +737,7 @@ impl Agent {
                 self.memory.add_step(step);
                 Some(Ok(StreamEvent::StepComplete {
                     step: self.step_number,
-                    action_step: step_clone,
+                    action_step: Box::new(step_clone),
                 }))
             }
             Ok(StepResult::FinalAnswer(answer)) => {
@@ -763,7 +763,7 @@ impl Agent {
     }
 
     /// Execute a single step with streaming support.
-    async fn execute_step_streaming(&mut self, step: &mut ActionStep) -> Result<StepResult> {
+    async fn execute_step_streaming(&self, step: &mut ActionStep) -> Result<StepResult> {
         let messages = self.memory.to_messages(false);
         step.model_input_messages = Some(messages.clone());
 
@@ -778,12 +778,11 @@ impl Agent {
             let mut stream = self.model.generate_stream(messages, options).await?;
             let mut deltas = Vec::new();
 
-            use futures::StreamExt;
             while let Some(result) = stream.next().await {
                 match result {
                     Ok(delta) => {
                         if let Some(usage) = &delta.token_usage {
-                            step.token_usage = Some(usage.clone());
+                            step.token_usage = Some(*usage);
                         }
                         deltas.push(delta);
                     }
@@ -984,14 +983,13 @@ impl Agent {
         {
             Ok(rendered) => rendered,
             Err(_) => format!(
-                "You're a helpful agent named '{}'.\n\
+                "You're a helpful agent named '{name}'.\n\
                  You have been submitted this task by your manager.\n\
                  ---\n\
-                 Task:\n{}\n\
+                 Task:\n{task}\n\
                  ---\n\
                  You're helping your manager solve a wider task: so make sure to not provide \
-                 a one-line answer, but give as much information as possible.",
-                name, task
+                 a one-line answer, but give as much information as possible."
             ),
         }
     }
@@ -1008,8 +1006,7 @@ impl Agent {
         {
             Ok(rendered) => rendered,
             Err(_) => format!(
-                "Here is the final answer from your managed agent '{}':\n{}",
-                name, final_answer
+                "Here is the final answer from your managed agent '{name}':\n{final_answer}"
             ),
         }
     }
@@ -1042,12 +1039,11 @@ impl ManagedAgent for Agent {
         // holds the agent in Arc<Mutex<>> and calls run_as_managed
         let report = format!(
             "### 1. Task outcome (short version):\n\
-             Received task: {}\n\n\
+             Received task: {task}\n\n\
              ### 2. Task outcome (extremely detailed version):\n\
-             The managed agent '{}' received the task. The task has been delegated.\n\n\
+             The managed agent '{agent_name}' received the task. The task has been delegated.\n\n\
              ### 3. Additional context:\n\
-             Agent description: {}",
-            task, agent_name, agent_desc
+             Agent description: {agent_desc}"
         );
 
         Ok(self.format_managed_agent_report_str(&agent_name, &report))

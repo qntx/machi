@@ -177,7 +177,7 @@ impl TemplateContext {
 
     /// Set remaining steps count.
     #[must_use]
-    pub fn with_remaining_steps(mut self, steps: usize) -> Self {
+    pub const fn with_remaining_steps(mut self, steps: usize) -> Self {
         self.remaining_steps = Some(steps);
         self
     }
@@ -463,7 +463,7 @@ impl PromptEngine {
 
         // Add custom filters if needed
         env.add_filter("list", |v: Value| -> Vec<Value> {
-            v.try_iter().map(|i| i.collect()).unwrap_or_default()
+            v.try_iter().map(Iterator::collect).unwrap_or_default()
         });
 
         Self { env }
@@ -532,7 +532,9 @@ mod tests {
         let engine = PromptEngine::new();
         let ctx = TemplateContext::new().with_task("Test task");
 
-        let result = engine.render("Task: {{ task }}", &ctx).unwrap();
+        let result = engine
+            .render("Task: {{ task }}", &ctx)
+            .expect("render should succeed");
         assert_eq!(result, "Task: Test task");
     }
 
@@ -545,8 +547,18 @@ mod tests {
 
         let template = "{% if custom_instructions %}{{ custom_instructions }}{% endif %}";
 
-        assert_eq!(engine.render(template, &ctx_with).unwrap(), "Be helpful");
-        assert_eq!(engine.render(template, &ctx_without).unwrap(), "");
+        assert_eq!(
+            engine
+                .render(template, &ctx_with)
+                .expect("render should succeed"),
+            "Be helpful"
+        );
+        assert_eq!(
+            engine
+                .render(template, &ctx_without)
+                .expect("render should succeed"),
+            ""
+        );
     }
 
     #[test]
@@ -562,11 +574,13 @@ mod tests {
 
         let ctx = TemplateContext::new().with_tool_infos(tools);
 
-        let template = r#"{%- for tool in tools.values() %}
+        let template = r"{%- for tool in tools.values() %}
 - {{ tool.name }}: {{ tool.description }}
-{%- endfor %}"#;
+{%- endfor %}";
 
-        let result = engine.render(template, &ctx).unwrap();
+        let result = engine
+            .render(template, &ctx)
+            .expect("render should succeed");
         assert!(result.contains("calc: Calculator"));
     }
 
@@ -583,11 +597,13 @@ mod tests {
 
         let ctx = TemplateContext::new().with_tool_infos(tools);
 
-        let template = r#"{%- for tool in tools.values() %}
+        let template = r"{%- for tool in tools.values() %}
 {{ tool.to_tool_calling_prompt() }}
-{%- endfor %}"#;
+{%- endfor %}";
 
-        let result = engine.render(template, &ctx).unwrap();
+        let result = engine
+            .render(template, &ctx)
+            .expect("render should succeed");
         assert!(result.contains("search: Search the web"));
         assert!(result.contains("Takes inputs:"));
     }
@@ -599,8 +615,10 @@ mod tests {
 
         // Test that {%- strips whitespace
         let template = "A\n{%- if task %}\nB\n{%- endif %}\nC";
-        let result = engine.render(template, &ctx).unwrap();
+        let result = engine
+            .render(template, &ctx)
+            .expect("render should succeed");
         // The exact output depends on minijinja's whitespace handling
-        assert!(result.contains("B"));
+        assert!(result.contains('B'));
     }
 }

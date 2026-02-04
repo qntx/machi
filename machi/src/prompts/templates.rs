@@ -165,7 +165,7 @@ impl PromptTemplates {
 
     /// Check if all required templates are present and non-empty.
     #[must_use]
-    pub fn is_complete(&self) -> bool {
+    pub const fn is_complete(&self) -> bool {
         !self.system_prompt.is_empty() && !self.planning.initial_plan.is_empty()
     }
 

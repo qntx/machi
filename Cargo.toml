@@ -4,14 +4,14 @@ default-members = ["machi"]
 resolver = "3"
 
 [workspace.package]
-version = "0.4.6"
+version = "0.4.7"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/pyroth/machi"
 
 [workspace.dependencies]
-machi = { version = "0.4.6", path = "machi" }
-machi-derive = { version = "0.4.6", path = "machi-derive" }
+machi = { version = "0.4.7", path = "machi" }
+machi-derive = { version = "0.4.7", path = "machi-derive" }
 
 anyhow = "1.0"
 async-trait = "0.1"

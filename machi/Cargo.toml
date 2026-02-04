@@ -6,6 +6,12 @@ license.workspace = true
 repository.workspace = true
 description = "A Rust implementation of smolagents - lightweight AI agents framework"
 
+[features]
+default = ["mcp", "toolkit", "derive"]
+mcp = ["dep:rmcp"]
+toolkit = ["dep:scraper"]
+derive = ["dep:machi-derive"]
+
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
@@ -14,11 +20,11 @@ bytes.workspace = true
 chrono.workspace = true
 convert_case.workspace = true
 futures.workspace = true
-machi-derive.workspace = true
+machi-derive = { workspace = true, optional = true }
 regex.workspace = true
-scraper.workspace = true
+scraper = { workspace = true, optional = true }
 reqwest.workspace = true
-rmcp.workspace = true
+rmcp = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

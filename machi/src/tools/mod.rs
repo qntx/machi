@@ -21,12 +21,11 @@
 //! let search = create_tool("web_search").unwrap();
 //! ```
 
-mod final_answer;
 mod user_input;
 mod visit_webpage;
 mod web_search;
 
-pub use final_answer::{FinalAnswerArgs, FinalAnswerTool};
+pub use crate::tool::{FinalAnswerArgs, FinalAnswerTool};
 pub use user_input::{UserInputArgs, UserInputTool};
 pub use visit_webpage::{VisitWebpageArgs, VisitWebpageTool};
 pub use web_search::{
@@ -36,8 +35,9 @@ pub use web_search::{
 use crate::tool::BoxedTool;
 
 /// Tool names that are available as built-in tools.
+///
+/// Note: `final_answer` is always available via `crate::tool::FinalAnswerTool`.
 pub const BUILTIN_TOOL_NAMES: &[&str] = &[
-    "final_answer",
     "web_search",
     "visit_webpage",
     "user_input",
@@ -65,6 +65,12 @@ pub fn create_tool(name: &str) -> Option<BoxedTool> {
         "user_input" => Some(Box::new(UserInputTool)),
         _ => None,
     }
+}
+
+/// Check if a tool name is always available (core tools).
+#[must_use]
+pub fn is_core_tool(name: &str) -> bool {
+    name == "final_answer"
 }
 
 /// Create multiple tools by name.

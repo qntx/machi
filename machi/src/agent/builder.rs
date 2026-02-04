@@ -7,8 +7,7 @@ use crate::{
     memory::AgentMemory,
     prompts::{PromptRender, PromptTemplates},
     providers::common::Model,
-    tool::{BoxedTool, ToolBox},
-    tools::FinalAnswerTool,
+    tool::{BoxedTool, FinalAnswerTool, ToolBox},
 };
 
 use std::{collections::HashMap, sync::Arc};
@@ -95,6 +94,8 @@ impl AgentBuilder {
     /// Note: `FinalAnswerTool` is always added automatically, so this mainly
     /// adds `VisitWebpageTool` for web browsing capability.
     ///
+    /// Requires the `toolkit` feature to be enabled.
+    ///
     /// # Example
     ///
     /// ```rust,ignore
@@ -103,6 +104,7 @@ impl AgentBuilder {
     ///     .add_base_tools()
     ///     .build();
     /// ```
+    #[cfg(feature = "toolkit")]
     #[must_use]
     pub fn add_base_tools(mut self) -> Self {
         self.tools.extend(crate::tools::base_tools());

@@ -34,6 +34,7 @@ pub mod agent;
 pub mod callback;
 pub mod error;
 pub mod managed;
+#[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod memory;
 pub mod message;
@@ -41,6 +42,7 @@ pub mod multimodal;
 pub mod prompts;
 pub mod providers;
 pub mod tool;
+#[cfg(feature = "toolkit")]
 pub mod tools;
 
 /// Prelude module for convenient imports.
@@ -74,6 +76,7 @@ pub mod prelude {
         BoxedManagedAgent, ManagedAgent, ManagedAgentArgs, ManagedAgentInfo, ManagedAgentRegistry,
         ManagedAgentTool,
     };
+    #[cfg(feature = "mcp")]
     pub use crate::mcp::McpClient;
     pub use crate::memory::{
         ActionStep, AgentMemory, MemoryStep, PlanningStep, TaskStep, ToolCall,
@@ -104,12 +107,15 @@ pub mod prelude {
     pub use crate::tool::{
         BoxedTool, DynTool, Tool, ToolBox, ToolCallResult, ToolDefinition, ToolError, ToolResult,
     };
+    #[cfg(feature = "toolkit")]
     pub use crate::tools::{FinalAnswerTool, UserInputTool, VisitWebpageTool, WebSearchTool};
 
     // Re-export derive macro
+    #[cfg(feature = "derive")]
     pub use machi_derive::tool;
 }
 
 // Re-export commonly used items at crate root
 pub use error::{AgentError, Result};
+#[cfg(feature = "derive")]
 pub use machi_derive::tool;

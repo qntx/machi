@@ -25,7 +25,7 @@ use crate::{
     memory::{ActionStep, FinalAnswerStep, Timing, ToolCall},
     message::ChatMessageStreamDelta,
     providers::common::GenerateOptions,
-    tools::FinalAnswerArgs,
+    tool::FinalAnswerArgs,
 };
 
 use super::{

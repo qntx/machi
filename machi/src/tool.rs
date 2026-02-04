@@ -477,3 +477,55 @@ impl fmt::Debug for ToolBox {
             .finish()
     }
 }
+
+/// Built-in tool for providing the final answer to a task.
+///
+/// This is a core tool that is always available and automatically added to agents.
+/// It allows the agent to conclude a task by providing the final answer.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FinalAnswerTool;
+
+/// Arguments for the final answer tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct FinalAnswerArgs {
+    /// The final answer to the problem. Can be any JSON value.
+    pub answer: Value,
+}
+
+#[async_trait]
+impl Tool for FinalAnswerTool {
+    const NAME: &'static str = "final_answer";
+    type Args = FinalAnswerArgs;
+    type Output = Value;
+    type Error = ToolError;
+
+    fn name(&self) -> &'static str {
+        Self::NAME
+    }
+
+    fn description(&self) -> String {
+        "Provides the final answer to the given problem.".to_string()
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "description": "The final answer to the problem."
+                }
+            },
+            "required": ["answer"]
+        })
+    }
+
+    fn output_type(&self) -> &'static str {
+        "any"
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Ok(args.answer)
+    }
+}

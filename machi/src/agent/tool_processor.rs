@@ -16,8 +16,7 @@ use crate::{
     error::Result,
     memory::{ActionStep, ToolCall},
     message::{ChatMessage, ChatMessageToolCall},
-    tool::ToolBox,
-    tools::FinalAnswerArgs,
+    tool::{FinalAnswerArgs, ToolBox},
 };
 
 use super::events::StepResult;

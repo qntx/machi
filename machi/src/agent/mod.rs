@@ -19,14 +19,17 @@ mod checks;
 mod config;
 mod events;
 mod executor;
+mod options;
 mod prompts_render;
 mod result;
 mod streaming;
+mod tool_processor;
 
 pub use builder::AgentBuilder;
 pub use checks::{FinalAnswerCheck, FinalAnswerChecks};
 pub use config::AgentConfig;
 pub use events::{AgentStream, RunState, StreamEvent, StreamItem};
+pub use options::RunOptions;
 pub use result::RunResult;
 
 use std::{
@@ -96,83 +99,37 @@ impl Agent {
         AgentBuilder::new()
     }
 
-    /// Run the agent with a task, returning the final answer.
+    /// Run the agent with a task.
     ///
-    /// This is the simplest way to execute an agent. For more control,
-    /// use [`run_with_options`] or [`run_detailed`].
-    #[inline]
-    pub async fn run(&mut self, task: &str) -> Result<Value> {
-        self.run_with_options(task, Vec::new(), HashMap::new())
-            .await
-    }
-
-    /// Run the agent with images (for vision models).
-    #[inline]
-    pub async fn run_with_images(&mut self, task: &str, images: Vec<AgentImage>) -> Result<Value> {
-        self.run_with_options(task, images, HashMap::new()).await
-    }
-
-    /// Run the agent with additional context variables.
-    #[inline]
-    pub async fn run_with_context(
-        &mut self,
-        task: &str,
-        context: HashMap<String, Value>,
-    ) -> Result<Value> {
-        self.run_with_options(task, Vec::new(), context).await
-    }
-
-    /// Run the agent with full options: images and context variables.
-    #[instrument(skip(self, images, context), fields(max_steps = self.config.max_steps, image_count = images.len()))]
-    pub async fn run_with_options(
-        &mut self,
-        task: &str,
-        images: Vec<AgentImage>,
-        context: HashMap<String, Value>,
-    ) -> Result<Value> {
-        self.run_detailed_with_options(task, images, context)
-            .await
-            .into_result(self.config.max_steps)
+    /// This is the unified entry point for agent execution. Use [`RunOptions`]
+    /// to configure images, context variables, and other settings.
+    /// ```
+    #[instrument(skip(self, options), fields(max_steps = self.config.max_steps))]
+    pub async fn run(&mut self, options: impl Into<RunOptions>) -> Result<Value> {
+        let opts = options.into();
+        if opts.detailed {
+            self.run_internal(opts)
+                .await
+                .into_result(self.config.max_steps)
+        } else {
+            self.run_internal(opts)
+                .await
+                .into_result(self.config.max_steps)
+        }
     }
 
     /// Run the agent and return detailed [`RunResult`] with metrics.
-    #[inline]
-    pub async fn run_detailed(&mut self, task: &str) -> RunResult {
-        self.run_detailed_with_options(task, Vec::new(), HashMap::new())
-            .await
+    ///
+    /// This always returns the full [`RunResult`] including token usage,
+    /// timing, and step information.
+    #[instrument(skip(self, options), fields(max_steps = self.config.max_steps))]
+    pub async fn run_detailed(&mut self, options: impl Into<RunOptions>) -> RunResult {
+        self.run_internal(options.into()).await
     }
 
-    /// Run with images, returning detailed [`RunResult`].
-    #[inline]
-    pub async fn run_detailed_with_images(
-        &mut self,
-        task: &str,
-        images: Vec<AgentImage>,
-    ) -> RunResult {
-        self.run_detailed_with_options(task, images, HashMap::new())
-            .await
-    }
-
-    /// Run with context variables, returning detailed [`RunResult`].
-    #[inline]
-    pub async fn run_detailed_with_context(
-        &mut self,
-        task: &str,
-        context: HashMap<String, Value>,
-    ) -> RunResult {
-        self.run_detailed_with_options(task, Vec::new(), context)
-            .await
-    }
-
-    /// Run with full options, returning detailed [`RunResult`] with metrics.
-    #[instrument(skip(self, images, context), fields(max_steps = self.config.max_steps, image_count = images.len()))]
-    pub async fn run_detailed_with_options(
-        &mut self,
-        task: &str,
-        images: Vec<AgentImage>,
-        context: HashMap<String, Value>,
-    ) -> RunResult {
-        self.prepare_run(task, images, context);
+    /// Internal run implementation.
+    async fn run_internal(&mut self, options: RunOptions) -> RunResult {
+        self.prepare_run(&options.task, options.images, options.context);
         info!("Starting agent run");
 
         let timing = Timing::start_now();
@@ -183,46 +140,17 @@ impl Agent {
         self.complete_run(result, final_timing)
     }
 
-    /// Stream execution events (step-level streaming).
+    /// Stream execution events.
     ///
-    /// This streams events at the step level. For token-level streaming,
-    /// see [`stream_tokens`].
-    #[instrument(skip(self), fields(max_steps = self.config.max_steps))]
-    pub fn stream(&mut self, task: &str) -> impl Stream<Item = StreamItem> + '_ {
-        self.stream_with_options(task, Vec::new(), HashMap::new())
-    }
-
-    /// Stream execution events with images.
-    #[instrument(skip(self, images), fields(max_steps = self.config.max_steps, image_count = images.len()))]
-    pub fn stream_with_images(
+    /// This streams events at both step-level and token-level granularity,
+    /// enabling real-time feedback during agent runs.
+    #[instrument(skip(self, options), fields(max_steps = self.config.max_steps))]
+    pub fn stream(
         &mut self,
-        task: &str,
-        images: Vec<AgentImage>,
+        options: impl Into<RunOptions>,
     ) -> impl Stream<Item = StreamItem> + '_ {
-        self.stream_with_options(task, images, HashMap::new())
-    }
-
-    /// Stream execution events with context variables.
-    #[instrument(skip(self, context), fields(max_steps = self.config.max_steps))]
-    pub fn stream_with_context(
-        &mut self,
-        task: &str,
-        context: HashMap<String, Value>,
-    ) -> impl Stream<Item = StreamItem> + '_ {
-        self.stream_with_options(task, Vec::new(), context)
-    }
-
-    /// Stream execution events with full options.
-    ///
-    /// This delegates to the streaming module for the actual implementation.
-    #[instrument(skip(self, images, context), fields(max_steps = self.config.max_steps, image_count = images.len()))]
-    pub fn stream_with_options(
-        &mut self,
-        task: &str,
-        images: Vec<AgentImage>,
-        context: HashMap<String, Value>,
-    ) -> impl Stream<Item = StreamItem> + '_ {
-        self.prepare_run(task, images, context);
+        let opts = options.into();
+        self.prepare_run(&opts.task, opts.images, opts.context);
         self.stream_execution()
     }
 

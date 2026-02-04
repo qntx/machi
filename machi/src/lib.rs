@@ -47,8 +47,8 @@ pub mod tools;
 /// Prelude module for convenient imports.
 pub mod prelude {
     pub use crate::agent::{
-        Agent, AgentBuilder, AgentConfig, AgentStream, FinalAnswerChecks, RunResult, RunState,
-        StreamEvent, StreamItem,
+        Agent, AgentBuilder, AgentConfig, AgentStream, FinalAnswerChecks, RunOptions, RunResult,
+        RunState, StreamEvent, StreamItem,
     };
     // Callback system
     pub use crate::callback::{

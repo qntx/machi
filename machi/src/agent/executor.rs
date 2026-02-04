@@ -11,16 +11,12 @@ use tracing::{debug, warn};
 
 use crate::{
     error::{AgentError, Result},
-    memory::{ActionStep, FinalAnswerStep, Timing, ToolCall},
-    message::{ChatMessage, ChatMessageToolCall},
+    memory::{ActionStep, FinalAnswerStep, Timing},
+    message::ChatMessage,
     providers::common::GenerateOptions,
 };
 
-use super::{Agent, events::StepResult};
-
-// ============================================================================
-// Execution Loop
-// ============================================================================
+use super::{Agent, events::StepResult, tool_processor::ToolProcessor};
 
 impl Agent {
     /// Execute the main ReAct loop until completion or max steps.
@@ -92,7 +88,11 @@ impl Agent {
         debug!(step = step.step_number, "Generating model response");
 
         let message = self.generate_response(messages, options, step).await?;
-        self.process_response(step, &message).await
+
+        // Use unified tool processor
+        let processor = ToolProcessor::new(&self.tools);
+        let result = processor.process(step, &message).await?;
+        Ok(result.outcome)
     }
 
     /// Validate the final answer against configured checks.
@@ -114,10 +114,6 @@ impl Agent {
             .record_step(self.step_number, step.token_usage.as_ref());
     }
 }
-
-// ============================================================================
-// Model Response Generation
-// ============================================================================
 
 impl Agent {
     /// Generate a response from the model, handling both streaming and non-streaming.
@@ -175,132 +171,5 @@ impl Agent {
         step.token_usage = response.token_usage;
         step.model_output = response.message.text_content();
         Ok(response.message)
-    }
-}
-
-// ============================================================================
-// Tool Call Processing
-// ============================================================================
-
-impl Agent {
-    /// Process tool calls from the model response.
-    pub(crate) async fn process_response(
-        &self,
-        step: &mut ActionStep,
-        message: &ChatMessage,
-    ) -> Result<StepResult> {
-        let Some(tool_calls) = Self::extract_tool_calls(step, message) else {
-            return Ok(StepResult::Continue);
-        };
-
-        let mut observations = Vec::with_capacity(tool_calls.len());
-        let mut final_answer = None;
-
-        for tc in &tool_calls {
-            let tool_name = tc.name();
-            step.tool_calls
-                .get_or_insert_with(Vec::new)
-                .push(ToolCall::new(&tc.id, tool_name, tc.arguments().clone()));
-
-            if tool_name == "final_answer" {
-                // Try parsing as FinalAnswerArgs, fallback to raw arguments
-                let answer = tc
-                    .parse_arguments::<crate::tools::FinalAnswerArgs>()
-                    .map_or_else(|_| tc.arguments().clone(), |args| args.answer);
-                final_answer = Some(answer);
-                step.is_final_answer = true;
-                continue;
-            }
-
-            let observation = self.execute_tool(tool_name, tc.arguments().clone()).await;
-            if let Err(ref e) = observation {
-                step.error = Some(e.clone());
-            }
-            observations.push(observation.unwrap_or_else(|e| e));
-        }
-
-        if !observations.is_empty() {
-            step.observations = Some(observations.join("\n"));
-        }
-
-        match final_answer {
-            Some(answer) => {
-                step.action_output = Some(answer.clone());
-                Ok(StepResult::FinalAnswer(answer))
-            }
-            None => Ok(StepResult::Continue),
-        }
-    }
-
-    /// Extract tool calls from model response or parse from text.
-    pub(crate) fn extract_tool_calls(
-        step: &ActionStep,
-        message: &ChatMessage,
-    ) -> Option<Vec<ChatMessageToolCall>> {
-        // First check for native tool calls
-        if let Some(tc) = &message.tool_calls {
-            return Some(tc.clone());
-        }
-
-        // Try to parse tool call from text output
-        if let Some(text) = &step.model_output {
-            if let Some(parsed) = Self::parse_text_tool_call(text) {
-                debug!(step = step.step_number, tool = %parsed.name(), "Parsed tool call from text");
-                return Some(vec![parsed]);
-            }
-            debug!(step = step.step_number, output = %text, "Model returned text without tool call");
-        } else {
-            debug!(step = step.step_number, "Model returned empty response");
-        }
-
-        None
-    }
-
-    /// Execute a single tool and return the result as a formatted string.
-    pub(crate) async fn execute_tool(
-        &self,
-        name: &str,
-        args: Value,
-    ) -> std::result::Result<String, String> {
-        match self.tools.call(name, args).await {
-            Ok(result) => Ok(format!("Tool '{name}' returned: {result}")),
-            Err(e) => Err(format!("Tool '{name}' failed: {e}")),
-        }
-    }
-
-    /// Parse a tool call from text output (for models that don't support native tool calling).
-    pub(crate) fn parse_text_tool_call(text: &str) -> Option<ChatMessageToolCall> {
-        // Find the first JSON object in the text
-        let json_str = text.find('{').map(|start| {
-            let mut depth = 0;
-            let mut end = start;
-            for (i, c) in text[start..].char_indices() {
-                match c {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end = start + i + 1;
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            &text[start..end]
-        })?;
-
-        let json: Value = serde_json::from_str(json_str).ok()?;
-        let name = json.get("name")?.as_str()?;
-        let arguments = json
-            .get("arguments")
-            .cloned()
-            .unwrap_or_else(|| Value::Object(serde_json::Map::default()));
-
-        Some(ChatMessageToolCall::new(
-            format!("text_parsed_{}", uuid::Uuid::new_v4().simple()),
-            name.to_string(),
-            arguments,
-        ))
     }
 }

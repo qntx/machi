@@ -21,8 +21,8 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let model = OllamaClient::new().completion_model("qwen3");
     let mut agent = Agent::builder()
         .model(model)
-        .tool(Box::new(WebSearchTool::new()))
-        .tool(Box::new(VisitWebpageTool::new()))
+        .tool(Box::new(WebSearchTool::default()))
+        .tool(Box::new(VisitWebpageTool::default()))
         .max_steps(5)
         .build();
 

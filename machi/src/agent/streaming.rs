@@ -12,13 +12,14 @@ use tracing::{debug, info, warn};
 
 use crate::{
     error::AgentError,
-    memory::{ActionStep, FinalAnswerStep, Timing, ToolCall},
+    memory::{ActionStep, FinalAnswerStep, Timing},
     providers::common::GenerateOptions,
 };
 
 use super::{
     Agent,
     events::{StepResult, StreamEvent, StreamItem},
+    tool_processor::ToolProcessor,
 };
 
 impl Agent {
@@ -133,11 +134,20 @@ impl Agent {
                 .await
         };
 
-        // Process result
+        // Process result using unified tool processor
         let outcome = match model_result {
             Ok(message) => {
-                self.process_tool_calls_streaming(step, &message, &mut events)
-                    .await
+                let processor = ToolProcessor::new(&self.tools).with_streaming();
+                match processor.process(step, &message).await {
+                    Ok(result) => {
+                        events.extend(result.events);
+                        Ok(result.outcome)
+                    }
+                    Err(e) => {
+                        step.error = Some(e.to_string());
+                        Err(e)
+                    }
+                }
             }
             Err(e) => {
                 step.error = Some(e.to_string());
@@ -215,83 +225,6 @@ impl Agent {
                 Ok(response.message)
             }
             Err(e) => Err(e),
-        }
-    }
-
-    /// Process tool calls from model response, yielding streaming events.
-    async fn process_tool_calls_streaming(
-        &self,
-        step: &mut ActionStep,
-        message: &crate::message::ChatMessage,
-        events: &mut Vec<StreamItem>,
-    ) -> crate::error::Result<StepResult> {
-        let Some(tool_calls) = Self::extract_tool_calls(step, message) else {
-            return Ok(StepResult::Continue);
-        };
-
-        let mut observations = Vec::with_capacity(tool_calls.len());
-        let mut got_final_answer = None;
-
-        for tc in &tool_calls {
-            let tool_name = tc.name();
-            let tool_id = tc.id.clone();
-            step.tool_calls
-                .get_or_insert_with(Vec::new)
-                .push(ToolCall::new(&tool_id, tool_name, tc.arguments().clone()));
-
-            // Yield tool call start event
-            events.push(Ok(StreamEvent::ToolCallStart {
-                id: tool_id.clone(),
-                name: tool_name.to_string(),
-            }));
-
-            if tool_name == "final_answer" {
-                // Try parsing as FinalAnswerArgs, fallback to raw arguments
-                let answer = tc
-                    .parse_arguments::<crate::tools::FinalAnswerArgs>()
-                    .map_or_else(|_| tc.arguments().clone(), |args| args.answer);
-                got_final_answer = Some(answer);
-                step.is_final_answer = true;
-                events.push(Ok(StreamEvent::ToolCallComplete {
-                    id: tool_id,
-                    name: tool_name.to_string(),
-                    result: Ok("Final answer recorded".to_string()),
-                }));
-                continue;
-            }
-
-            // Execute tool
-            let tool_result = self.tools.call(tool_name, tc.arguments().clone()).await;
-            let (result_str, tool_output) = match tool_result {
-                Ok(output) => {
-                    let s = format!("Tool '{tool_name}' returned: {output}");
-                    (Ok(s.clone()), s)
-                }
-                Err(e) => {
-                    let s = format!("Tool '{tool_name}' failed: {e}");
-                    step.error = Some(s.clone());
-                    (Err(s.clone()), s)
-                }
-            };
-
-            events.push(Ok(StreamEvent::ToolCallComplete {
-                id: tool_id,
-                name: tool_name.to_string(),
-                result: result_str,
-            }));
-            observations.push(tool_output);
-        }
-
-        if !observations.is_empty() {
-            step.observations = Some(observations.join("\n"));
-        }
-
-        match got_final_answer {
-            Some(answer) => {
-                step.action_output = Some(answer.clone());
-                Ok(StepResult::FinalAnswer(answer))
-            }
-            None => Ok(StepResult::Continue),
         }
     }
 }

@@ -1,25 +1,13 @@
-//! Simple agent example with custom tools using Ollama.
+//! Web search agent example with built-in tools using Ollama.
 //!
 //! ```bash
 //! ollama pull qwen3
-//! cargo run --example agent_tools
+//! cargo run --example agent_base_tools
 //! ```
 
-#![allow(clippy::print_stdout, clippy::print_stderr, clippy::unused_async)]
+#![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use machi::prelude::*;
-
-/// Adds two numbers.
-#[machi::tool]
-async fn add(a: i64, b: i64) -> ToolResult<i64> {
-    Ok(a + b)
-}
-
-/// Multiplies two numbers.
-#[machi::tool]
-async fn multiply(a: i64, b: i64) -> ToolResult<i64> {
-    Ok(a * b)
-}
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -29,12 +17,12 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let mut agent = Agent::builder()
         .model(model)
-        .tool(Box::new(Add))
-        .tool(Box::new(Multiply))
-        .max_steps(5)
+        .tool(Box::new(WebSearchTool::default()))
+        .tool(Box::new(VisitWebpageTool::default()))
+        .max_steps(10)
         .build();
 
-    let task = "What is 15 + 27? Then multiply the result by 3.";
+    let task = "Search for the latest Rust programming news and summarize it.";
     println!("Task: {task}\n");
 
     match agent.run(task).await {

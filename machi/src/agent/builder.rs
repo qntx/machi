@@ -87,6 +87,29 @@ impl AgentBuilder {
         self
     }
 
+    /// Add base tools commonly used by agents.
+    ///
+    /// Similar to smolagents' `add_base_tools=True` option, this adds:
+    /// - `FinalAnswerTool` - for providing final answers
+    /// - `VisitWebpageTool` - for reading webpage content
+    ///
+    /// Note: `FinalAnswerTool` is always added automatically, so this mainly
+    /// adds `VisitWebpageTool` for web browsing capability.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let agent = Agent::builder()
+    ///     .model(model)
+    ///     .add_base_tools()
+    ///     .build();
+    /// ```
+    #[must_use]
+    pub fn add_base_tools(mut self) -> Self {
+        self.tools.extend(crate::tools::base_tools());
+        self
+    }
+
     /// Set the maximum number of steps (default: 20).
     #[must_use]
     pub const fn max_steps(mut self, max: usize) -> Self {

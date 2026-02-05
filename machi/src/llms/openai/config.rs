@@ -117,24 +117,382 @@ impl Default for OpenAIConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_config_new() {
-        let config = OpenAIConfig::new("test-key");
-        assert_eq!(config.api_key, "test-key");
-        assert_eq!(config.base_url, OpenAIConfig::DEFAULT_BASE_URL);
-        assert_eq!(config.model, OpenAIConfig::DEFAULT_MODEL);
+    mod constants {
+        use super::*;
+
+        #[test]
+        fn default_base_url_is_openai_api() {
+            assert_eq!(OpenAIConfig::DEFAULT_BASE_URL, "https://api.openai.com/v1");
+        }
+
+        #[test]
+        fn default_model_is_gpt4o() {
+            assert_eq!(OpenAIConfig::DEFAULT_MODEL, "gpt-4o");
+        }
     }
 
-    #[test]
-    fn test_config_builder() {
-        let config = OpenAIConfig::new("key")
-            .with_model("gpt-4")
-            .with_timeout(60);
+    mod new {
+        use super::*;
 
-        assert_eq!(config.model, "gpt-4");
-        assert_eq!(config.timeout_secs, Some(60));
+        #[test]
+        fn creates_with_api_key() {
+            let config = OpenAIConfig::new("sk-test-key-123");
+            assert_eq!(config.api_key, "sk-test-key-123");
+        }
+
+        #[test]
+        fn uses_default_base_url() {
+            let config = OpenAIConfig::new("key");
+            assert_eq!(config.base_url, OpenAIConfig::DEFAULT_BASE_URL);
+        }
+
+        #[test]
+        fn uses_default_model() {
+            let config = OpenAIConfig::new("key");
+            assert_eq!(config.model, OpenAIConfig::DEFAULT_MODEL);
+        }
+
+        #[test]
+        fn organization_is_none() {
+            let config = OpenAIConfig::new("key");
+            assert!(config.organization.is_none());
+        }
+
+        #[test]
+        fn timeout_defaults_to_120_seconds() {
+            let config = OpenAIConfig::new("key");
+            assert_eq!(config.timeout_secs, Some(120));
+        }
+
+        #[test]
+        fn accepts_string_type() {
+            let config = OpenAIConfig::new(String::from("string-key"));
+            assert_eq!(config.api_key, "string-key");
+        }
+
+        #[test]
+        fn accepts_str_reference() {
+            let key = "str-ref-key";
+            let config = OpenAIConfig::new(key);
+            assert_eq!(config.api_key, "str-ref-key");
+        }
+    }
+
+    mod default {
+        use super::*;
+
+        #[test]
+        fn api_key_is_empty() {
+            let config = OpenAIConfig::default();
+            assert!(config.api_key.is_empty());
+        }
+
+        #[test]
+        fn uses_default_base_url() {
+            let config = OpenAIConfig::default();
+            assert_eq!(config.base_url, OpenAIConfig::DEFAULT_BASE_URL);
+        }
+
+        #[test]
+        fn uses_default_model() {
+            let config = OpenAIConfig::default();
+            assert_eq!(config.model, OpenAIConfig::DEFAULT_MODEL);
+        }
+
+        #[test]
+        fn organization_is_none() {
+            let config = OpenAIConfig::default();
+            assert!(config.organization.is_none());
+        }
+
+        #[test]
+        fn timeout_defaults_to_120_seconds() {
+            let config = OpenAIConfig::default();
+            assert_eq!(config.timeout_secs, Some(120));
+        }
+    }
+
+    mod with_base_url {
+        use super::*;
+
+        #[test]
+        fn sets_custom_base_url() {
+            let config = OpenAIConfig::new("key").with_base_url("https://custom.api.com/v1");
+            assert_eq!(config.base_url, "https://custom.api.com/v1");
+        }
+
+        #[test]
+        fn preserves_other_fields() {
+            let config = OpenAIConfig::new("my-key")
+                .with_model("gpt-4")
+                .with_base_url("https://custom.com");
+
+            assert_eq!(config.api_key, "my-key");
+            assert_eq!(config.model, "gpt-4");
+        }
+
+        #[test]
+        fn accepts_string_type() {
+            let url = String::from("https://azure.openai.com");
+            let config = OpenAIConfig::new("key").with_base_url(url);
+            assert_eq!(config.base_url, "https://azure.openai.com");
+        }
+    }
+
+    mod with_model {
+        use super::*;
+
+        #[test]
+        fn sets_custom_model() {
+            let config = OpenAIConfig::new("key").with_model("gpt-4-turbo");
+            assert_eq!(config.model, "gpt-4-turbo");
+        }
+
+        #[test]
+        fn preserves_other_fields() {
+            let config = OpenAIConfig::new("my-key")
+                .with_base_url("https://custom.com")
+                .with_model("gpt-3.5-turbo");
+
+            assert_eq!(config.api_key, "my-key");
+            assert_eq!(config.base_url, "https://custom.com");
+        }
+
+        #[test]
+        fn accepts_various_model_names() {
+            let models = [
+                "gpt-4o",
+                "gpt-4o-mini",
+                "gpt-4-turbo",
+                "gpt-3.5-turbo",
+                "o1-preview",
+                "o1-mini",
+            ];
+            for model in models {
+                let config = OpenAIConfig::new("key").with_model(model);
+                assert_eq!(config.model, model);
+            }
+        }
+    }
+
+    mod with_organization {
+        use super::*;
+
+        #[test]
+        fn sets_organization_id() {
+            let config = OpenAIConfig::new("key").with_organization("org-123456");
+            assert_eq!(config.organization, Some("org-123456".to_owned()));
+        }
+
+        #[test]
+        fn preserves_other_fields() {
+            let config = OpenAIConfig::new("my-key")
+                .with_model("gpt-4")
+                .with_organization("my-org");
+
+            assert_eq!(config.api_key, "my-key");
+            assert_eq!(config.model, "gpt-4");
+        }
+
+        #[test]
+        fn overwrites_previous_organization() {
+            let config = OpenAIConfig::new("key")
+                .with_organization("org-1")
+                .with_organization("org-2");
+            assert_eq!(config.organization, Some("org-2".to_owned()));
+        }
+    }
+
+    mod with_timeout {
+        use super::*;
+
+        #[test]
+        fn sets_custom_timeout() {
+            let config = OpenAIConfig::new("key").with_timeout(60);
+            assert_eq!(config.timeout_secs, Some(60));
+        }
+
+        #[test]
+        fn allows_zero_timeout() {
+            let config = OpenAIConfig::new("key").with_timeout(0);
+            assert_eq!(config.timeout_secs, Some(0));
+        }
+
+        #[test]
+        fn allows_large_timeout() {
+            let config = OpenAIConfig::new("key").with_timeout(3600);
+            assert_eq!(config.timeout_secs, Some(3600));
+        }
+
+        #[test]
+        fn preserves_other_fields() {
+            let config = OpenAIConfig::new("my-key")
+                .with_model("gpt-4")
+                .with_timeout(30);
+
+            assert_eq!(config.api_key, "my-key");
+            assert_eq!(config.model, "gpt-4");
+        }
+    }
+
+    mod azure {
+        use super::*;
+
+        #[test]
+        fn creates_azure_config() {
+            let config =
+                OpenAIConfig::azure("https://my-resource.openai.azure.com", "azure-api-key");
+            assert_eq!(config.base_url, "https://my-resource.openai.azure.com");
+            assert_eq!(config.api_key, "azure-api-key");
+        }
+
+        #[test]
+        fn uses_gpt4o_as_default_model() {
+            let config = OpenAIConfig::azure("https://azure.com", "key");
+            assert_eq!(config.model, "gpt-4o");
+        }
+
+        #[test]
+        fn organization_is_none() {
+            let config = OpenAIConfig::azure("https://azure.com", "key");
+            assert!(config.organization.is_none());
+        }
+
+        #[test]
+        fn timeout_defaults_to_120() {
+            let config = OpenAIConfig::azure("https://azure.com", "key");
+            assert_eq!(config.timeout_secs, Some(120));
+        }
+
+        #[test]
+        fn accepts_string_types() {
+            let endpoint = String::from("https://my.azure.com");
+            let key = String::from("my-key");
+            let config = OpenAIConfig::azure(endpoint, key);
+            assert_eq!(config.base_url, "https://my.azure.com");
+            assert_eq!(config.api_key, "my-key");
+        }
+    }
+
+    mod builder_chain {
+        use super::*;
+
+        #[test]
+        fn full_configuration_chain() {
+            let config = OpenAIConfig::new("sk-test-key")
+                .with_base_url("https://custom.openai.com/v1")
+                .with_model("gpt-4-turbo")
+                .with_organization("org-abc123")
+                .with_timeout(90);
+
+            assert_eq!(config.api_key, "sk-test-key");
+            assert_eq!(config.base_url, "https://custom.openai.com/v1");
+            assert_eq!(config.model, "gpt-4-turbo");
+            assert_eq!(config.organization, Some("org-abc123".to_owned()));
+            assert_eq!(config.timeout_secs, Some(90));
+        }
+
+        #[test]
+        fn order_independence() {
+            let config1 = OpenAIConfig::new("key")
+                .with_model("model")
+                .with_timeout(60)
+                .with_organization("org");
+
+            let config2 = OpenAIConfig::new("key")
+                .with_organization("org")
+                .with_timeout(60)
+                .with_model("model");
+
+            assert_eq!(config1.model, config2.model);
+            assert_eq!(config1.organization, config2.organization);
+            assert_eq!(config1.timeout_secs, config2.timeout_secs);
+        }
+    }
+
+    mod clone {
+        use super::*;
+
+        #[test]
+        fn clone_preserves_all_fields() {
+            let original = OpenAIConfig::new("key")
+                .with_base_url("https://custom.com")
+                .with_model("gpt-4")
+                .with_organization("org")
+                .with_timeout(60);
+
+            let cloned = original.clone();
+
+            assert_eq!(cloned.api_key, original.api_key);
+            assert_eq!(cloned.base_url, original.base_url);
+            assert_eq!(cloned.model, original.model);
+            assert_eq!(cloned.organization, original.organization);
+            assert_eq!(cloned.timeout_secs, original.timeout_secs);
+        }
+
+        #[test]
+        fn clone_is_independent() {
+            let original = OpenAIConfig::new("key");
+            let mut cloned = original.clone();
+            cloned.api_key = "new-key".to_owned();
+
+            assert_eq!(original.api_key, "key");
+            assert_eq!(cloned.api_key, "new-key");
+        }
+    }
+
+    mod debug {
+        use super::*;
+
+        #[test]
+        fn debug_format_contains_fields() {
+            let config = OpenAIConfig::new("test-key").with_model("gpt-4");
+            let debug_str = format!("{:?}", config);
+
+            assert!(debug_str.contains("OpenAIConfig"));
+            assert!(debug_str.contains("api_key"));
+            assert!(debug_str.contains("base_url"));
+            assert!(debug_str.contains("model"));
+        }
+    }
+
+    mod from_env {
+        use super::*;
+
+        // Note: from_env tests require environment variables to be set
+        // Integration tests with actual env vars should be run separately
+
+        #[test]
+        fn uses_defaults_for_optional_env_vars() {
+            // This test verifies the function signature and default behavior
+            // without manipulating actual environment state
+            // When OPENAI_API_KEY is not set, from_env returns an error
+            let result = OpenAIConfig::from_env();
+
+            // If env var is set (CI/local dev), verify config is valid
+            // If not set, verify error is returned
+            match result {
+                Ok(config) => {
+                    // API key should not be empty when successfully loaded
+                    assert!(!config.api_key.is_empty());
+                    // Base URL should be set (either from env or default)
+                    assert!(!config.base_url.is_empty());
+                    // Model should be set (either from env or default)
+                    assert!(!config.model.is_empty());
+                }
+                Err(e) => {
+                    // Error message should mention OPENAI_API_KEY
+                    let msg = e.to_string();
+                    assert!(
+                        msg.contains("OPENAI_API_KEY") || msg.contains("api"),
+                        "Error should mention API key: {msg}"
+                    );
+                }
+            }
+        }
     }
 }

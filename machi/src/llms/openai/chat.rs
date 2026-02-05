@@ -179,3 +179,580 @@ impl ChatProvider for OpenAI {
         true
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::llms::openai::OpenAIConfig;
+
+    mod openai_chat_response {
+        use super::*;
+
+        #[test]
+        fn deserializes_minimal_response() {
+            let json = r#"{
+                "id": "chatcmpl-123",
+                "model": "gpt-4o",
+                "choices": [{
+                    "message": {"content": "Hello!"},
+                    "finish_reason": "stop"
+                }]
+            }"#;
+
+            let response: OpenAIChatResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(response.id, "chatcmpl-123");
+            assert_eq!(response.model, "gpt-4o");
+            assert_eq!(response.choices.len(), 1);
+        }
+
+        #[test]
+        fn deserializes_with_usage() {
+            let json = r#"{
+                "id": "chatcmpl-123",
+                "model": "gpt-4o",
+                "choices": [{
+                    "message": {"content": "Hi"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15
+                }
+            }"#;
+
+            let response: OpenAIChatResponse = serde_json::from_str(json).unwrap();
+
+            let usage = response.usage.unwrap();
+            assert_eq!(usage.input_tokens, 10);
+            assert_eq!(usage.output_tokens, 5);
+            assert_eq!(usage.total_tokens, 15);
+        }
+
+        #[test]
+        fn deserializes_with_service_tier() {
+            let json = r#"{
+                "id": "chatcmpl-123",
+                "model": "gpt-4o",
+                "choices": [{
+                    "message": {"content": "Hi"},
+                    "finish_reason": "stop"
+                }],
+                "service_tier": "scale"
+            }"#;
+
+            let response: OpenAIChatResponse = serde_json::from_str(json).unwrap();
+
+            assert_eq!(response.service_tier, Some("scale".to_owned()));
+        }
+
+        #[test]
+        fn handles_missing_optional_fields() {
+            let json = r#"{
+                "id": "chatcmpl-123",
+                "model": "gpt-4o",
+                "choices": [{
+                    "message": {"content": "Hi"},
+                    "finish_reason": "stop"
+                }]
+            }"#;
+
+            let response: OpenAIChatResponse = serde_json::from_str(json).unwrap();
+
+            assert!(response.usage.is_none());
+            assert!(response.service_tier.is_none());
+        }
+    }
+
+    mod openai_choice {
+        use super::*;
+
+        #[test]
+        fn deserializes_with_content() {
+            let json = r#"{
+                "message": {"content": "Hello world"},
+                "finish_reason": "stop"
+            }"#;
+
+            let choice: OpenAIChoice = serde_json::from_str(json).unwrap();
+
+            assert_eq!(choice.message.content, Some("Hello world".to_owned()));
+            assert_eq!(choice.finish_reason, Some("stop".to_owned()));
+        }
+
+        #[test]
+        fn deserializes_with_tool_calls() {
+            let json = r#"{
+                "message": {
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Tokyo\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }"#;
+
+            let choice: OpenAIChoice = serde_json::from_str(json).unwrap();
+
+            assert!(choice.message.content.is_none());
+            let tool_calls = choice.message.tool_calls.unwrap();
+            assert_eq!(tool_calls.len(), 1);
+            assert_eq!(tool_calls[0].id, "call_123");
+        }
+
+        #[test]
+        fn handles_null_finish_reason() {
+            let json = r#"{
+                "message": {"content": "Partial"},
+                "finish_reason": null
+            }"#;
+
+            let choice: OpenAIChoice = serde_json::from_str(json).unwrap();
+
+            assert!(choice.finish_reason.is_none());
+        }
+    }
+
+    mod openai_response_message {
+        use super::*;
+
+        #[test]
+        fn deserializes_text_content() {
+            let json = r#"{"content": "Hello!"}"#;
+            let msg: OpenAIResponseMessage = serde_json::from_str(json).unwrap();
+
+            assert_eq!(msg.content, Some("Hello!".to_owned()));
+        }
+
+        #[test]
+        fn deserializes_refusal() {
+            let json = r#"{"content": null, "refusal": "I cannot help with that"}"#;
+            let msg: OpenAIResponseMessage = serde_json::from_str(json).unwrap();
+
+            assert!(msg.content.is_none());
+            assert_eq!(msg.refusal, Some("I cannot help with that".to_owned()));
+        }
+
+        #[test]
+        fn deserializes_tool_calls() {
+            let json = r#"{
+                "content": null,
+                "tool_calls": [{
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": "{}"}
+                }]
+            }"#;
+
+            let msg: OpenAIResponseMessage = serde_json::from_str(json).unwrap();
+
+            let tool_calls = msg.tool_calls.unwrap();
+            assert_eq!(tool_calls.len(), 1);
+            assert_eq!(tool_calls[0].function.name, "search");
+        }
+
+        #[test]
+        fn handles_empty_message() {
+            let json = r#"{}"#;
+            let msg: OpenAIResponseMessage = serde_json::from_str(json).unwrap();
+
+            assert!(msg.content.is_none());
+            assert!(msg.refusal.is_none());
+            assert!(msg.tool_calls.is_none());
+        }
+    }
+
+    mod parse_response {
+        use super::*;
+
+        fn make_response(content: &str, finish_reason: &str) -> OpenAIChatResponse {
+            OpenAIChatResponse {
+                id: "test-id".to_owned(),
+                model: "gpt-4o".to_owned(),
+                choices: vec![OpenAIChoice {
+                    message: OpenAIResponseMessage {
+                        content: Some(content.to_owned()),
+                        refusal: None,
+                        tool_calls: None,
+                    },
+                    finish_reason: Some(finish_reason.to_owned()),
+                }],
+                usage: None,
+                service_tier: None,
+            }
+        }
+
+        #[test]
+        fn parses_text_response() {
+            let response = make_response("Hello!", "stop");
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(
+                result.message.content,
+                Some(Content::Text("Hello!".to_owned()))
+            );
+            assert_eq!(result.stop_reason, StopReason::Stop);
+        }
+
+        #[test]
+        fn parses_stop_finish_reason() {
+            let response = make_response("Done", "stop");
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.stop_reason, StopReason::Stop);
+        }
+
+        #[test]
+        fn parses_length_finish_reason() {
+            let response = make_response("Truncated...", "length");
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.stop_reason, StopReason::Length);
+        }
+
+        #[test]
+        fn parses_tool_calls_finish_reason() {
+            let response = OpenAIChatResponse {
+                id: "test".to_owned(),
+                model: "gpt-4o".to_owned(),
+                choices: vec![OpenAIChoice {
+                    message: OpenAIResponseMessage {
+                        content: None,
+                        refusal: None,
+                        tool_calls: Some(vec![OpenAIToolCall {
+                            id: "call_123".to_owned(),
+                            call_type: "function".to_owned(),
+                            function: crate::llms::openai::client::OpenAIFunctionCall {
+                                name: "test".to_owned(),
+                                arguments: "{}".to_owned(),
+                            },
+                        }]),
+                    },
+                    finish_reason: Some("tool_calls".to_owned()),
+                }],
+                usage: None,
+                service_tier: None,
+            };
+
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.stop_reason, StopReason::ToolCalls);
+            assert!(result.message.tool_calls.is_some());
+        }
+
+        #[test]
+        fn parses_content_filter_finish_reason() {
+            let response = make_response("", "content_filter");
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.stop_reason, StopReason::ContentFilter);
+        }
+
+        #[test]
+        fn defaults_unknown_finish_reason_to_stop() {
+            let response = make_response("Hi", "unknown_reason");
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.stop_reason, StopReason::Stop);
+        }
+
+        #[test]
+        fn defaults_none_finish_reason_to_stop() {
+            let response = OpenAIChatResponse {
+                id: "test".to_owned(),
+                model: "gpt-4o".to_owned(),
+                choices: vec![OpenAIChoice {
+                    message: OpenAIResponseMessage {
+                        content: Some("Hi".to_owned()),
+                        refusal: None,
+                        tool_calls: None,
+                    },
+                    finish_reason: None,
+                }],
+                usage: None,
+                service_tier: None,
+            };
+
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.stop_reason, StopReason::Stop);
+        }
+
+        #[test]
+        fn includes_model_in_response() {
+            let response = make_response("Hi", "stop");
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.model, Some("gpt-4o".to_owned()));
+        }
+
+        #[test]
+        fn includes_id_in_response() {
+            let response = make_response("Hi", "stop");
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.id, Some("test-id".to_owned()));
+        }
+
+        #[test]
+        fn includes_usage_when_present() {
+            let mut response = make_response("Hi", "stop");
+            response.usage = Some(Usage::new(10, 5));
+
+            let result = OpenAI::parse_response(response).unwrap();
+
+            let usage = result.usage.unwrap();
+            assert_eq!(usage.input_tokens, 10);
+            assert_eq!(usage.output_tokens, 5);
+        }
+
+        #[test]
+        fn includes_service_tier_when_present() {
+            let mut response = make_response("Hi", "stop");
+            response.service_tier = Some("default".to_owned());
+
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(result.service_tier, Some("default".to_owned()));
+        }
+
+        #[test]
+        fn includes_refusal_when_present() {
+            let response = OpenAIChatResponse {
+                id: "test".to_owned(),
+                model: "gpt-4o".to_owned(),
+                choices: vec![OpenAIChoice {
+                    message: OpenAIResponseMessage {
+                        content: None,
+                        refusal: Some("I cannot assist with that request.".to_owned()),
+                        tool_calls: None,
+                    },
+                    finish_reason: Some("stop".to_owned()),
+                }],
+                usage: None,
+                service_tier: None,
+            };
+
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(
+                result.message.refusal,
+                Some("I cannot assist with that request.".to_owned())
+            );
+        }
+
+        #[test]
+        fn errors_on_empty_choices() {
+            let response = OpenAIChatResponse {
+                id: "test".to_owned(),
+                model: "gpt-4o".to_owned(),
+                choices: vec![],
+                usage: None,
+                service_tier: None,
+            };
+
+            let result = OpenAI::parse_response(response);
+
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn converts_tool_calls_correctly() {
+            let response = OpenAIChatResponse {
+                id: "test".to_owned(),
+                model: "gpt-4o".to_owned(),
+                choices: vec![OpenAIChoice {
+                    message: OpenAIResponseMessage {
+                        content: None,
+                        refusal: None,
+                        tool_calls: Some(vec![
+                            OpenAIToolCall {
+                                id: "call_1".to_owned(),
+                                call_type: "function".to_owned(),
+                                function: crate::llms::openai::client::OpenAIFunctionCall {
+                                    name: "get_weather".to_owned(),
+                                    arguments: r#"{"city":"Tokyo"}"#.to_owned(),
+                                },
+                            },
+                            OpenAIToolCall {
+                                id: "call_2".to_owned(),
+                                call_type: "function".to_owned(),
+                                function: crate::llms::openai::client::OpenAIFunctionCall {
+                                    name: "get_time".to_owned(),
+                                    arguments: r#"{"timezone":"JST"}"#.to_owned(),
+                                },
+                            },
+                        ]),
+                    },
+                    finish_reason: Some("tool_calls".to_owned()),
+                }],
+                usage: None,
+                service_tier: None,
+            };
+
+            let result = OpenAI::parse_response(response).unwrap();
+
+            let tool_calls = result.message.tool_calls.unwrap();
+            assert_eq!(tool_calls.len(), 2);
+            assert_eq!(tool_calls[0].id, "call_1");
+            assert_eq!(tool_calls[0].function.name, "get_weather");
+            assert_eq!(tool_calls[1].id, "call_2");
+            assert_eq!(tool_calls[1].function.name, "get_time");
+        }
+    }
+
+    mod chat_provider_impl {
+        use super::*;
+
+        fn test_client() -> OpenAI {
+            OpenAI::new(OpenAIConfig::new("test-key")).unwrap()
+        }
+
+        #[test]
+        fn provider_name_is_openai() {
+            let client = test_client();
+            assert_eq!(client.provider_name(), "openai");
+        }
+
+        #[test]
+        fn default_model_returns_config_model() {
+            let config = OpenAIConfig::new("key").with_model("gpt-4-turbo");
+            let client = OpenAI::new(config).unwrap();
+
+            assert_eq!(client.default_model(), "gpt-4-turbo");
+        }
+
+        #[test]
+        fn supports_streaming() {
+            let client = test_client();
+            assert!(client.supports_streaming());
+        }
+
+        #[test]
+        fn supports_tools() {
+            let client = test_client();
+            assert!(client.supports_tools());
+        }
+
+        #[test]
+        fn supports_vision() {
+            let client = test_client();
+            assert!(client.supports_vision());
+        }
+
+        #[test]
+        fn supports_json_mode() {
+            let client = test_client();
+            assert!(client.supports_json_mode());
+        }
+    }
+
+    mod realistic_responses {
+        use super::*;
+
+        #[test]
+        fn parses_gpt4o_response() {
+            let json = r#"{
+                "id": "chatcmpl-AYqxL4Xqo9erJtSNrAhdDzKP6Weex",
+                "object": "chat.completion",
+                "created": 1732918041,
+                "model": "gpt-4o-2024-08-06",
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Hello! How can I assist you today?",
+                        "refusal": null
+                    },
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 19,
+                    "completion_tokens": 9,
+                    "total_tokens": 28,
+                    "prompt_tokens_details": {
+                        "cached_tokens": 0,
+                        "audio_tokens": 0
+                    },
+                    "completion_tokens_details": {
+                        "reasoning_tokens": 0,
+                        "audio_tokens": 0,
+                        "accepted_prediction_tokens": 0,
+                        "rejected_prediction_tokens": 0
+                    }
+                },
+                "service_tier": "default",
+                "system_fingerprint": "fp_831e067d82"
+            }"#;
+
+            let response: OpenAIChatResponse = serde_json::from_str(json).unwrap();
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert_eq!(
+                result.message.content,
+                Some(Content::Text(
+                    "Hello! How can I assist you today?".to_owned()
+                ))
+            );
+            assert_eq!(result.stop_reason, StopReason::Stop);
+            assert_eq!(result.model, Some("gpt-4o-2024-08-06".to_owned()));
+            assert_eq!(result.service_tier, Some("default".to_owned()));
+
+            let usage = result.usage.unwrap();
+            assert_eq!(usage.input_tokens, 19);
+            assert_eq!(usage.output_tokens, 9);
+        }
+
+        #[test]
+        fn parses_tool_call_response() {
+            let json = r#"{
+                "id": "chatcmpl-xyz",
+                "object": "chat.completion",
+                "created": 1732918041,
+                "model": "gpt-4o-2024-08-06",
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "call_vKI6XCWp8QSTSsLAY0J0vUcH",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": "{\"location\":\"Tokyo\",\"unit\":\"celsius\"}"
+                            }
+                        }],
+                        "refusal": null
+                    },
+                    "logprobs": null,
+                    "finish_reason": "tool_calls"
+                }],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 25,
+                    "total_tokens": 125
+                }
+            }"#;
+
+            let response: OpenAIChatResponse = serde_json::from_str(json).unwrap();
+            let result = OpenAI::parse_response(response).unwrap();
+
+            assert!(result.message.content.is_none());
+            assert_eq!(result.stop_reason, StopReason::ToolCalls);
+
+            let tool_calls = result.message.tool_calls.unwrap();
+            assert_eq!(tool_calls.len(), 1);
+            assert_eq!(tool_calls[0].id, "call_vKI6XCWp8QSTSsLAY0J0vUcH");
+            assert_eq!(tool_calls[0].function.name, "get_weather");
+        }
+    }
+}

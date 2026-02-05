@@ -4,20 +4,51 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
+use serde::Deserialize;
 
 use crate::chat::ChatProvider;
 use crate::chat::{ChatRequest, ChatResponse};
 use crate::error::{LlmError, Result};
 use crate::message::{Content, Role, ToolCall as MsgToolCall};
 use crate::stream::{StopReason, StreamChunk};
+use crate::usage::Usage;
 
-use super::client::OpenAI;
+use super::client::{OpenAI, OpenAIToolCall, StreamOptions};
 use super::stream::parse_sse_events;
-use super::types::{OpenAIChatResponse, StreamOptions};
+
+/// OpenAI chat completion response.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIChatResponse {
+    pub id: String,
+    pub model: String,
+    pub choices: Vec<OpenAIChoice>,
+    #[serde(default)]
+    pub usage: Option<Usage>,
+    /// Service tier used for processing.
+    #[serde(default)]
+    pub service_tier: Option<String>,
+}
+
+/// OpenAI response choice.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIChoice {
+    pub message: OpenAIResponseMessage,
+    pub finish_reason: Option<String>,
+}
+
+/// OpenAI response message.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIResponseMessage {
+    pub content: Option<String>,
+    /// Refusal message if the model declined to respond.
+    #[serde(default)]
+    pub refusal: Option<String>,
+    pub tool_calls: Option<Vec<OpenAIToolCall>>,
+}
 
 impl OpenAI {
     /// Parse the response into ChatResponse.
-    pub(crate) fn parse_response(response: OpenAIChatResponse) -> Result<ChatResponse> {
+    fn parse_response(response: OpenAIChatResponse) -> Result<ChatResponse> {
         let choice = response
             .choices
             .into_iter()
@@ -44,7 +75,7 @@ impl OpenAI {
         let message = crate::message::Message {
             role: Role::Assistant,
             content,
-            refusal: None,
+            refusal: choice.message.refusal,
             annotations: Vec::new(),
             tool_calls,
             tool_call_id: None,
@@ -59,7 +90,7 @@ impl OpenAI {
             usage: response.usage,
             model: Some(response.model),
             id: Some(response.id),
-            service_tier: None,
+            service_tier: response.service_tier,
             raw: None,
         })
     }

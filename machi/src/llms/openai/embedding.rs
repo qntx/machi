@@ -1,6 +1,7 @@
 //! OpenAI Embedding API implementation.
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::embedding::{
     Embedding, EmbeddingProvider, EmbeddingRequest, EmbeddingResponse, EmbeddingUsage,
@@ -8,7 +9,39 @@ use crate::embedding::{
 use crate::error::{LlmError, Result};
 
 use super::client::OpenAI;
-use super::types::{OpenAIEmbeddingRequest, OpenAIEmbeddingResponse};
+
+/// OpenAI embedding request.
+#[derive(Debug, Clone, Serialize)]
+struct OpenAIEmbeddingRequest {
+    pub model: String,
+    pub input: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoding_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<u32>,
+}
+
+/// OpenAI embedding data.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIEmbeddingData {
+    pub embedding: Vec<f32>,
+    pub index: usize,
+}
+
+/// OpenAI embedding response.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIEmbeddingResponse {
+    pub data: Vec<OpenAIEmbeddingData>,
+    pub model: String,
+    pub usage: Option<OpenAIEmbeddingUsage>,
+}
+
+/// OpenAI embedding usage statistics.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIEmbeddingUsage {
+    pub prompt_tokens: u32,
+    pub total_tokens: u32,
+}
 
 /// Default embedding model for OpenAI.
 const DEFAULT_EMBEDDING_MODEL: &str = "text-embedding-3-small";

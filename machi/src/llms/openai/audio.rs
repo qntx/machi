@@ -1,6 +1,7 @@
 //! OpenAI Audio API implementation (TTS & STT).
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use crate::audio::{
     SpeechRequest, SpeechResponse, SpeechToTextProvider, TextToSpeechProvider,
@@ -9,7 +10,30 @@ use crate::audio::{
 use crate::error::{LlmError, Result};
 
 use super::client::OpenAI;
-use super::types::{OpenAISpeechRequest, OpenAITranscriptionResponse};
+
+/// OpenAI text-to-speech request.
+#[derive(Debug, Clone, Serialize)]
+struct OpenAISpeechRequest {
+    pub model: String,
+    pub input: String,
+    pub voice: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+}
+
+/// OpenAI transcription response (verbose JSON format).
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAITranscriptionResponse {
+    pub text: String,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub duration: Option<f32>,
+}
 
 #[async_trait]
 impl TextToSpeechProvider for OpenAI {

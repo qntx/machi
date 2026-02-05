@@ -12,7 +12,6 @@ mod client;
 mod config;
 mod embedding;
 mod stream;
-mod types;
 
 pub use client::OpenAI;
 pub use config::OpenAIConfig;

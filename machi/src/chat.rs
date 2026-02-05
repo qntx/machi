@@ -33,6 +33,41 @@ use crate::stream::{StopReason, StreamChunk};
 use crate::tool::ToolDefinition;
 use crate::usage::Usage;
 
+/// Reasoning effort level for o-series models.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    /// No reasoning (gpt-5.1+ only).
+    None,
+    /// Minimal reasoning effort.
+    Minimal,
+    /// Low reasoning effort.
+    Low,
+    /// Medium reasoning effort (default for most models).
+    #[default]
+    Medium,
+    /// High reasoning effort.
+    High,
+    /// Extra high reasoning effort (gpt-5.1-codex-max+).
+    #[serde(rename = "xhigh")]
+    XHigh,
+}
+
+impl ReasoningEffort {
+    /// Returns the string representation for the API.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::XHigh => "xhigh",
+        }
+    }
+}
+
 /// A chat completion request to an LLM.
 ///
 /// # OpenAI API Alignment
@@ -127,6 +162,10 @@ pub struct ChatRequest {
     /// Metadata key-value pairs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<std::collections::HashMap<String, String>>,
+
+    /// Reasoning effort for o-series models (none, minimal, low, medium, high, xhigh).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 impl ChatRequest {
@@ -300,6 +339,13 @@ impl ChatRequest {
     #[must_use]
     pub fn service_tier(mut self, tier: impl Into<String>) -> Self {
         self.service_tier = Some(tier.into());
+        self
+    }
+
+    /// Sets reasoning effort for o-series models.
+    #[must_use]
+    pub const fn reasoning_effort(mut self, effort: ReasoningEffort) -> Self {
+        self.reasoning_effort = Some(effort);
         self
     }
 }

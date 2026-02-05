@@ -1,9 +1,48 @@
 //! OpenAI SSE stream parsing.
 
+use serde::Deserialize;
+
 use crate::error::Result;
 use crate::stream::{StopReason, StreamChunk};
+use crate::usage::Usage;
 
-use super::types::OpenAIStreamChunk;
+/// OpenAI streaming chunk.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIStreamChunk {
+    pub choices: Vec<OpenAIStreamChoice>,
+    #[serde(default)]
+    pub usage: Option<Usage>,
+}
+
+/// OpenAI stream choice.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIStreamChoice {
+    pub delta: OpenAIStreamDelta,
+    pub finish_reason: Option<String>,
+}
+
+/// OpenAI stream delta.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct OpenAIStreamDelta {
+    pub content: Option<String>,
+    pub tool_calls: Option<Vec<OpenAIStreamToolCall>>,
+}
+
+/// OpenAI stream tool call delta.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIStreamToolCall {
+    pub index: usize,
+    #[serde(default)]
+    pub id: Option<String>,
+    pub function: Option<OpenAIStreamFunctionCall>,
+}
+
+/// OpenAI stream function call delta.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIStreamFunctionCall {
+    pub name: Option<String>,
+    pub arguments: Option<String>,
+}
 
 /// Parse SSE events from a text buffer.
 pub fn parse_sse_events(text: &str) -> Vec<Result<StreamChunk>> {

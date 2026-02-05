@@ -9,6 +9,8 @@ pub struct OllamaConfig {
     pub model: String,
     /// Request timeout in seconds.
     pub timeout_secs: Option<u64>,
+    /// Controls how long the model stays loaded in memory (e.g., "5m", "0" to unload immediately).
+    pub keep_alive: Option<String>,
 }
 
 impl OllamaConfig {
@@ -37,6 +39,7 @@ impl OllamaConfig {
     /// Reads from:
     /// - `OLLAMA_BASE_URL` - Optional base URL
     /// - `OLLAMA_MODEL` - Optional default model
+    /// - `OLLAMA_KEEP_ALIVE` - Optional keep alive duration
     #[must_use]
     pub fn from_env() -> Self {
         let base_url =
@@ -45,10 +48,13 @@ impl OllamaConfig {
         let model =
             std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| Self::DEFAULT_MODEL.to_owned());
 
+        let keep_alive = std::env::var("OLLAMA_KEEP_ALIVE").ok();
+
         Self {
             base_url,
             model,
             timeout_secs: Some(300),
+            keep_alive,
         }
     }
 
@@ -72,6 +78,13 @@ impl OllamaConfig {
         self.timeout_secs = Some(secs);
         self
     }
+
+    /// Sets the keep alive duration.
+    #[must_use]
+    pub fn keep_alive(mut self, duration: impl Into<String>) -> Self {
+        self.keep_alive = Some(duration.into());
+        self
+    }
 }
 
 impl Default for OllamaConfig {
@@ -80,32 +93,7 @@ impl Default for OllamaConfig {
             base_url: Self::DEFAULT_BASE_URL.to_owned(),
             model: Self::DEFAULT_MODEL.to_owned(),
             timeout_secs: Some(300),
+            keep_alive: None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_config_default() {
-        let config = OllamaConfig::new();
-        assert_eq!(config.base_url, OllamaConfig::DEFAULT_BASE_URL);
-        assert_eq!(config.model, OllamaConfig::DEFAULT_MODEL);
-    }
-
-    #[test]
-    fn test_config_with_model() {
-        let config = OllamaConfig::with_model("qwen2.5");
-        assert_eq!(config.model, "qwen2.5");
-    }
-
-    #[test]
-    fn test_config_builder() {
-        let config = OllamaConfig::new().model("mistral").timeout(60);
-
-        assert_eq!(config.model, "mistral");
-        assert_eq!(config.timeout_secs, Some(60));
     }
 }

@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::chat::ChatRequest;
 use crate::error::{LlmError, Result};
@@ -11,10 +13,92 @@ use crate::message::{Content, ContentPart, Message, Role};
 use crate::tool::ToolDefinition;
 
 use super::config::OllamaConfig;
-use super::types::{
-    OllamaChatRequest, OllamaErrorResponse, OllamaFunction, OllamaMessage, OllamaOptions,
-    OllamaTool,
-};
+
+/// Ollama chat completion request.
+#[derive(Debug, Clone, Serialize)]
+pub struct OllamaChatRequest {
+    pub model: String,
+    pub messages: Vec<OllamaMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<OllamaTool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<OllamaOptions>,
+    #[serde(default)]
+    pub stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_alive: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub think: Option<bool>,
+}
+
+/// Ollama generation options.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OllamaOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_predict: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_ctx: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
+}
+
+/// Ollama message format.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<OllamaToolCall>>,
+}
+
+/// Ollama tool definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaTool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: OllamaFunction,
+}
+
+/// Ollama function definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaFunction {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
+}
+
+/// Ollama tool call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaToolCall {
+    pub function: OllamaFunctionCall,
+}
+
+/// Ollama function call details.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaFunctionCall {
+    pub name: String,
+    pub arguments: Value,
+}
+
+/// Ollama error response.
+#[derive(Debug, Clone, Deserialize)]
+struct OllamaErrorResponse {
+    pub error: String,
+}
 
 /// Ollama API client.
 #[derive(Debug, Clone)]
@@ -69,10 +153,6 @@ impl Ollama {
         &self.http_client
     }
 
-    // =========================================================================
-    // URL Builders
-    // =========================================================================
-
     /// Build the chat API URL.
     pub(crate) fn chat_url(&self) -> String {
         format!("{}/api/chat", self.config.base_url)
@@ -82,10 +162,6 @@ impl Ollama {
     pub(crate) fn embeddings_url(&self) -> String {
         format!("{}/api/embed", self.config.base_url)
     }
-
-    // =========================================================================
-    // Message Conversion
-    // =========================================================================
 
     /// Convert Message to Ollama format.
     pub(crate) fn convert_message(msg: &Message) -> OllamaMessage {
@@ -180,13 +256,16 @@ impl Ollama {
             || request.top_p.is_some()
             || request.max_tokens.is_some()
             || request.stop.is_some()
+            || request.seed.is_some()
         {
+            #[allow(clippy::cast_possible_wrap)]
             Some(OllamaOptions {
                 temperature: request.temperature,
                 top_p: request.top_p,
-                #[allow(clippy::cast_possible_wrap)]
                 num_predict: request.max_tokens.map(|t| t as i32),
+                seed: request.seed,
                 stop: request.stop.clone(),
+                ..Default::default()
             })
         } else {
             None
@@ -207,12 +286,10 @@ impl Ollama {
             format,
             options,
             stream: request.stream,
+            keep_alive: self.config.keep_alive.clone(),
+            think: None, // Enable via model-specific configuration if needed
         }
     }
-
-    // =========================================================================
-    // Error Handling
-    // =========================================================================
 
     /// Parse an error response from Ollama.
     pub(crate) fn parse_error(status: u16, body: &str) -> LlmError {

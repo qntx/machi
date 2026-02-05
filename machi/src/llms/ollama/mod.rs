@@ -9,7 +9,6 @@ mod client;
 mod config;
 mod embedding;
 mod stream;
-mod types;
 
 pub use client::Ollama;
 pub use config::OllamaConfig;

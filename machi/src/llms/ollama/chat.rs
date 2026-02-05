@@ -4,21 +4,45 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
+use serde::Deserialize;
 
 use crate::chat::ChatProvider;
 use crate::chat::{ChatRequest, ChatResponse};
 use crate::error::{LlmError, Result};
-use crate::message::{Content, Message, Role, ToolCall as MsgToolCall};
+use crate::message::{Content, Message, Role, ToolCall};
 use crate::stream::{StopReason, StreamChunk};
 use crate::usage::Usage;
 
-use super::client::Ollama;
+use super::client::{Ollama, OllamaToolCall};
 use super::stream::parse_stream_line;
-use super::types::OllamaChatResponse;
+
+/// Ollama chat completion response.
+#[derive(Debug, Clone, Deserialize)]
+struct OllamaChatResponse {
+    pub model: String,
+    pub message: OllamaResponseMessage,
+    #[serde(default)]
+    pub done_reason: Option<String>,
+    #[serde(default)]
+    pub prompt_eval_count: Option<u32>,
+    #[serde(default)]
+    pub eval_count: Option<u32>,
+}
+
+/// Ollama response message.
+#[derive(Debug, Clone, Deserialize)]
+struct OllamaResponseMessage {
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<OllamaToolCall>>,
+    #[serde(default)]
+    pub thinking: Option<String>,
+}
 
 impl Ollama {
     /// Parse the response into ChatResponse.
-    pub(crate) fn parse_response(response: OllamaChatResponse) -> ChatResponse {
+    fn parse_response(response: OllamaChatResponse) -> ChatResponse {
         let stop_reason = match response.done_reason.as_deref() {
             Some("length") => StopReason::Length,
             // "stop", None, and any other value defaults to Stop
@@ -28,10 +52,13 @@ impl Ollama {
         let tool_calls = response.message.tool_calls.map(|calls| {
             calls
                 .into_iter()
-                .enumerate()
-                .map(|(i, tc)| {
+                .map(|tc| {
                     let args = serde_json::to_string(&tc.function.arguments).unwrap_or_default();
-                    MsgToolCall::function(format!("call_{i}"), tc.function.name, args)
+                    ToolCall::function(
+                        format!("call_{}", uuid::Uuid::new_v4()),
+                        tc.function.name,
+                        args,
+                    )
                 })
                 .collect()
         });
@@ -42,6 +69,9 @@ impl Ollama {
             Some(Content::Text(response.message.content))
         };
 
+        // Extract thinking content from reasoning models
+        let reasoning_content = response.message.thinking.filter(|t| !t.is_empty());
+
         let message = Message {
             role: Role::Assistant,
             content,
@@ -50,7 +80,7 @@ impl Ollama {
             tool_calls,
             tool_call_id: None,
             name: None,
-            reasoning_content: None,
+            reasoning_content,
             thinking_blocks: None,
         };
 

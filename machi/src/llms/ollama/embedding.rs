@@ -22,8 +22,8 @@ struct OllamaEmbeddingRequest {
 #[derive(Debug, Clone, Deserialize)]
 struct OllamaEmbeddingResponse {
     embeddings: Vec<Vec<f32>>,
-    #[allow(dead_code)]
-    model: Option<String>,
+    #[serde(default)]
+    prompt_eval_count: Option<u32>,
 }
 
 #[async_trait]
@@ -63,8 +63,8 @@ impl EmbeddingProvider for Ollama {
         Ok(EmbeddingResponse {
             embeddings,
             model: Some(request.model.clone()),
-            usage: None, // Ollama doesn't return token usage for embeddings
-            total_tokens: None,
+            usage: None,
+            total_tokens: parsed.prompt_eval_count,
         })
     }
 

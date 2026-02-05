@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::chat::ChatRequest;
 use crate::error::{LlmError, Result};
@@ -11,11 +13,178 @@ use crate::message::{Content, ContentPart, Message, Role};
 use crate::tool::ToolDefinition;
 
 use super::config::OpenAIConfig;
-use super::types::{
-    OpenAIChatRequest, OpenAIContent, OpenAIContentPart, OpenAIErrorResponse, OpenAIFunction,
-    OpenAIFunctionCall, OpenAIImageUrl, OpenAIInputAudio, OpenAIMessage, OpenAIResponseFormat,
-    OpenAITool, OpenAIToolCall, StreamOptions,
-};
+
+/// OpenAI chat completion request.
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAIChatRequest {
+    pub model: String,
+    pub messages: Vec<OpenAIMessage>,
+    /// Deprecated: use max_completion_tokens instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    /// Max tokens including visible output and reasoning tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_completion_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<OpenAITool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<Value>,
+    /// Whether to enable parallel function calling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<OpenAIResponseFormat>,
+    /// Reasoning effort for o-series models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<StreamOptions>,
+    /// Service tier for processing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
+    /// User identifier for abuse detection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+}
+
+/// Stream options for OpenAI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamOptions {
+    pub include_usage: bool,
+}
+
+/// OpenAI message format.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIMessage {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<OpenAIContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<OpenAIToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// OpenAI message content variants.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OpenAIContent {
+    Text(String),
+    Array(Vec<OpenAIContentPart>),
+}
+
+/// OpenAI content part.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum OpenAIContentPart {
+    Text { text: String },
+    ImageUrl { image_url: OpenAIImageUrl },
+    InputAudio { input_audio: OpenAIInputAudio },
+}
+
+/// OpenAI image URL.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIImageUrl {
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// OpenAI input audio.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIInputAudio {
+    pub data: String,
+    pub format: String,
+}
+
+/// OpenAI tool definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAITool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: OpenAIFunction,
+}
+
+/// OpenAI function definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIFunction {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strict: Option<bool>,
+}
+
+/// OpenAI tool call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub call_type: String,
+    pub function: OpenAIFunctionCall,
+}
+
+/// OpenAI function call details.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIFunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
+
+/// OpenAI response format.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum OpenAIResponseFormat {
+    Text,
+    JsonObject,
+    JsonSchema { json_schema: Value },
+}
+
+impl OpenAIResponseFormat {
+    /// Creates from our ResponseFormat type.
+    pub fn from_response_format(format: &crate::chat::ResponseFormat) -> Self {
+        match format {
+            crate::chat::ResponseFormat::Text => Self::Text,
+            crate::chat::ResponseFormat::JsonObject => Self::JsonObject,
+            crate::chat::ResponseFormat::JsonSchema { json_schema } => Self::JsonSchema {
+                json_schema: serde_json::json!({
+                    "name": json_schema.name,
+                    "schema": json_schema.schema,
+                    "strict": json_schema.strict,
+                }),
+            },
+        }
+    }
+}
+
+/// OpenAI error response.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIErrorResponse {
+    pub error: OpenAIError,
+}
+
+/// OpenAI error details.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAIError {
+    pub message: String,
+    #[serde(rename = "type")]
+    pub error_type: String,
+    pub code: Option<String>,
+}
 
 /// OpenAI API client.
 #[derive(Debug, Clone)]
@@ -208,11 +377,17 @@ impl OpenAI {
             request.model.clone()
         };
 
+        // Prefer max_completion_tokens over deprecated max_tokens
+        let (max_tokens, max_completion_tokens) = match request.max_completion_tokens {
+            Some(tokens) => (None, Some(tokens)),
+            None => (request.max_tokens, None),
+        };
+
         OpenAIChatRequest {
             model,
             messages,
-            max_tokens: request.max_tokens,
-            max_completion_tokens: None,
+            max_tokens,
+            max_completion_tokens,
             temperature: request.temperature,
             top_p: request.top_p,
             frequency_penalty: request.frequency_penalty,
@@ -220,6 +395,7 @@ impl OpenAI {
             stop: request.stop.clone(),
             tools,
             tool_choice: request.tool_choice.clone(),
+            parallel_tool_calls: request.parallel_tool_calls,
             stream: request.stream,
             stream_options: if request.stream {
                 Some(StreamOptions {
@@ -232,8 +408,9 @@ impl OpenAI {
                 .response_format
                 .as_ref()
                 .map(OpenAIResponseFormat::from_response_format),
-            reasoning_effort: None,
-            seed: request.seed,
+            reasoning_effort: request.reasoning_effort.map(|e| e.as_str().to_owned()),
+            service_tier: request.service_tier.clone(),
+            user: request.user.clone(),
         }
     }
 

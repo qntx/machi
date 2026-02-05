@@ -653,6 +653,12 @@ impl fmt::Debug for ToolBox {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::no_effect_underscore_binding,
+    clippy::unnecessary_wraps
+)]
 mod tests {
     use super::*;
 
@@ -983,12 +989,12 @@ mod tests {
 
         #[test]
         fn auto_approve_handler_is_default() {
-            let _handler = AutoApproveHandler::default();
+            let _handler = AutoApproveHandler;
         }
 
         #[test]
         fn always_deny_handler_is_default() {
-            let _handler = AlwaysDenyHandler::default();
+            let _handler = AlwaysDenyHandler;
         }
 
         #[test]
@@ -1266,7 +1272,7 @@ mod tests {
         fn debug_format() {
             let mut toolbox = ToolBox::new();
             toolbox.add(MockTool { name: "test" });
-            let debug = format!("{:?}", toolbox);
+            let debug = format!("{toolbox:?}");
             assert!(debug.contains("ToolBox"));
             assert!(debug.contains("test"));
         }

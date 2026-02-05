@@ -361,6 +361,7 @@ impl UsageTracker {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -387,7 +388,7 @@ mod tests {
 
         #[test]
         fn serde_default_on_missing_fields() {
-            let json = r#"{}"#;
+            let json = r"{}";
             let details: PromptTokensDetails = serde_json::from_str(json).unwrap();
             assert_eq!(details.cached_tokens, 0);
             assert_eq!(details.audio_tokens, 0);

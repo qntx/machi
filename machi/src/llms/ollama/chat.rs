@@ -105,7 +105,7 @@ impl Ollama {
 impl ChatProvider for Ollama {
     async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse> {
         let url = self.chat_url();
-        let mut body = self.build_body(request);
+        let mut body = self.build_body(request).await?;
         body.stream = false;
 
         let response = self.client().post(&url).json(&body).send().await?;
@@ -132,7 +132,7 @@ impl ChatProvider for Ollama {
         request: &ChatRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
         let url = self.chat_url();
-        let mut body = self.build_body(request);
+        let mut body = self.build_body(request).await?;
         body.stream = true;
 
         let response = self.client().post(&url).json(&body).send().await?;

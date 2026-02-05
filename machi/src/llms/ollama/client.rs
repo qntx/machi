@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -163,8 +164,11 @@ impl Ollama {
         format!("{}/api/embed", self.config.base_url)
     }
 
-    /// Convert Message to Ollama format.
-    pub(crate) fn convert_message(msg: &Message) -> OllamaMessage {
+    /// Convert Message to Ollama format (async version for URL image support).
+    pub(crate) async fn convert_message_async(
+        client: &Client,
+        msg: &Message,
+    ) -> Result<OllamaMessage> {
         let role = match msg.role {
             Role::User => "user",
             Role::Assistant => "assistant",
@@ -173,24 +177,27 @@ impl Ollama {
             Role::System | Role::Developer => "system",
         };
 
-        let (content, images) = Self::extract_content(msg);
+        let (content, images) = Self::extract_content_async(client, msg).await?;
 
-        OllamaMessage {
+        Ok(OllamaMessage {
             role: role.to_owned(),
             content,
             images,
             tool_calls: None,
-        }
+        })
     }
 
-    /// Extract text content and images from a message.
-    fn extract_content(msg: &Message) -> (String, Option<Vec<String>>) {
+    /// Extract text content and images from a message (async for URL download).
+    async fn extract_content_async(
+        client: &Client,
+        msg: &Message,
+    ) -> Result<(String, Option<Vec<String>>)> {
         let Some(content) = &msg.content else {
-            return (String::new(), None);
+            return Ok((String::new(), None));
         };
 
         match content {
-            Content::Text(text) => (text.clone(), None),
+            Content::Text(text) => Ok((text.clone(), None)),
             Content::Parts(parts) => {
                 let mut text_parts = Vec::new();
                 let mut images = Vec::new();
@@ -199,12 +206,19 @@ impl Ollama {
                     match part {
                         ContentPart::Text { text } => text_parts.push(text.clone()),
                         ContentPart::ImageUrl { image_url } => {
-                            // Extract base64 data from data URL
-                            if let Some(data) = image_url.url.strip_prefix("data:")
+                            let url = &image_url.url;
+                            // Handle data URL (base64 encoded)
+                            if let Some(data) = url.strip_prefix("data:")
                                 && let Some(base64_start) = data.find(";base64,")
                             {
                                 let base64_data = &data[base64_start + 8..];
                                 images.push(base64_data.to_owned());
+                            }
+                            // Handle http/https URL - download and convert to base64
+                            else if url.starts_with("http://") || url.starts_with("https://") {
+                                let base64_data =
+                                    Self::download_image_as_base64(client, url).await?;
+                                images.push(base64_data);
                             }
                         }
                         ContentPart::InputAudio { .. } => {
@@ -219,9 +233,34 @@ impl Ollama {
                     Some(images)
                 };
 
-                (text_parts.join("\n"), images)
+                Ok((text_parts.join("\n"), images))
             }
         }
+    }
+
+    /// Download an image from URL and convert to base64.
+    async fn download_image_as_base64(client: &Client, url: &str) -> Result<String> {
+        let response = client
+            .get(url)
+            .header("User-Agent", "machi/0.5")
+            .send()
+            .await
+            .map_err(|e| LlmError::internal(format!("Failed to download image: {e}")))?;
+
+        if !response.status().is_success() {
+            return Err(LlmError::internal(format!(
+                "Failed to download image: HTTP {}",
+                response.status()
+            ))
+            .into());
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| LlmError::internal(format!("Failed to read image bytes: {e}")))?;
+
+        Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
     }
 
     /// Convert ToolDefinition to Ollama format.
@@ -236,10 +275,13 @@ impl Ollama {
         }
     }
 
-    /// Build the request body.
-    pub(crate) fn build_body(&self, request: &ChatRequest) -> OllamaChatRequest {
-        let messages: Vec<OllamaMessage> =
-            request.messages.iter().map(Self::convert_message).collect();
+    /// Build the request body (async for URL image support).
+    pub(crate) async fn build_body(&self, request: &ChatRequest) -> Result<OllamaChatRequest> {
+        let mut messages = Vec::with_capacity(request.messages.len());
+        for msg in &request.messages {
+            let converted = Self::convert_message_async(&self.http_client, msg).await?;
+            messages.push(converted);
+        }
 
         let tools = request
             .tools
@@ -279,7 +321,7 @@ impl Ollama {
             crate::chat::ResponseFormat::Text => None,
         });
 
-        OllamaChatRequest {
+        Ok(OllamaChatRequest {
             model,
             messages,
             tools,
@@ -288,7 +330,7 @@ impl Ollama {
             stream: request.stream,
             keep_alive: self.config.keep_alive.clone(),
             think: None, // Enable via model-specific configuration if needed
-        }
+        })
     }
 
     /// Parse an error response from Ollama.
@@ -301,13 +343,15 @@ impl Ollama {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_message_conversion() {
+    #[tokio::test]
+    async fn test_message_conversion() {
+        let client = Client::new();
         let msg = Message::user("Hello!");
-        let converted = Ollama::convert_message(&msg);
+        let converted = Ollama::convert_message_async(&client, &msg).await.unwrap();
 
         assert_eq!(converted.role, "user");
         assert_eq!(converted.content, "Hello!");

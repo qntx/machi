@@ -350,6 +350,7 @@ impl From<serde_json::Error> for ToolError {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -655,7 +656,7 @@ mod tests {
         #[test]
         fn clone_trait() {
             let err1 = ToolError::not_found("tool");
-            let err2 = err1.clone();
+            let err2 = err1;
             assert!(matches!(err2, ToolError::NotFound(_)));
         }
 

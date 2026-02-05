@@ -380,6 +380,7 @@ impl StreamAggregator {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -533,7 +534,7 @@ mod tests {
         #[test]
         fn clone_trait() {
             let chunk = StreamChunk::text("Clone me");
-            let cloned = chunk.clone();
+            let cloned = chunk;
             assert_eq!(cloned.as_text(), Some("Clone me"));
         }
     }
@@ -847,7 +848,7 @@ mod tests {
 
             // Simulate tool call streaming
             agg.apply(&StreamChunk::tool_use_start(0, "call_123", "get_weather"));
-            agg.apply(&StreamChunk::tool_use_delta(0, r#"{"#));
+            agg.apply(&StreamChunk::tool_use_delta(0, r"{"));
             agg.apply(&StreamChunk::tool_use_delta(0, r#""city":"#));
             agg.apply(&StreamChunk::tool_use_delta(0, r#""Paris"}"#));
             agg.apply(&StreamChunk::done(Some(StopReason::ToolCalls)));

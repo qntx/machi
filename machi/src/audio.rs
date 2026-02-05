@@ -591,6 +591,7 @@ pub trait AudioProvider: TextToSpeechProvider + SpeechToTextProvider {}
 impl<T: TextToSpeechProvider + SpeechToTextProvider> AudioProvider for T {}
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

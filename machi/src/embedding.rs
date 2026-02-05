@@ -284,6 +284,7 @@ pub trait EmbeddingProvider: Send + Sync {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
 
@@ -482,7 +483,7 @@ mod tests {
             let e2 = Embedding::new(vec![0.8, 0.6], 1);
 
             let sim = e1.cosine_similarity(&e2);
-            let expected = 0.6 * 0.8 + 0.8 * 0.6; // = 0.96
+            let expected = 0.6f32.mul_add(0.8, 0.8 * 0.6); // = 0.96
             assert!((sim - expected).abs() < 1e-6);
         }
 
@@ -716,7 +717,7 @@ mod tests {
         #[test]
         fn similarity_search_workflow() {
             let query = Embedding::new(vec![1.0, 0.0, 0.0], 0);
-            let docs = vec![
+            let docs = [
                 Embedding::new(vec![0.9, 0.1, 0.0], 0),
                 Embedding::new(vec![0.0, 1.0, 0.0], 1),
                 Embedding::new(vec![0.7, 0.7, 0.0], 2),

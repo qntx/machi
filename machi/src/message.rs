@@ -1011,6 +1011,7 @@ impl MessageAggregator {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -2109,7 +2110,7 @@ mod tests {
 
         #[test]
         fn full_conversation_flow() {
-            let messages = vec![
+            let messages = [
                 Message::system("You are a helpful assistant."),
                 Message::user("What's the weather in Tokyo?"),
                 Message::assistant_tool_calls(vec![ToolCall::function(

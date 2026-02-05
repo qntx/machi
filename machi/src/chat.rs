@@ -716,6 +716,7 @@ impl ProviderCapabilities {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -733,7 +734,7 @@ mod tests {
         #[test]
         fn with_messages_sets_both() {
             let msgs = vec![Message::user("Hello")];
-            let req = ChatRequest::with_messages("gpt-4o", msgs.clone());
+            let req = ChatRequest::with_messages("gpt-4o", msgs);
 
             assert_eq!(req.model, "gpt-4o");
             assert_eq!(req.messages.len(), 1);

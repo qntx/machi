@@ -1,168 +1,268 @@
-//! Agent execution logic for the ReAct loop.
-//!
-//! This module contains the core execution methods for running agent steps,
-//! processing model responses, and handling tool calls.
+//! Agent execution loop implementation.
 
-use std::sync::atomic::Ordering;
-
-use futures::StreamExt;
 use serde_json::Value;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
-use crate::{
-    error::{AgentError, Result},
-    memory::{ActionStep, FinalAnswerStep, Timing},
-    message::ChatMessage,
-    providers::GenerateOptions,
-};
+use crate::chat::ChatRequest;
+use crate::error::{Error, Result};
+use crate::message::Message;
+use crate::stream::StopReason;
+use crate::tool::{ToolCallResult, ToolConfirmationRequest, ToolConfirmationResponse};
 
-use super::{Agent, events::StepResult, tool_processor::ToolProcessor};
+use super::Agent;
+use super::memory::{ActionStep, MemoryStep, ToolCallInfo};
+
+/// Special tool name for final answers.
+const FINAL_ANSWER_TOOL: &str = "final_answer";
 
 impl Agent {
-    /// Execute the main ReAct loop until completion or max steps.
-    pub(crate) async fn execute_loop(&mut self) -> Result<Value> {
+    /// Execute the main agent loop.
+    pub(super) async fn execute_loop(&mut self) -> Result<Value> {
         while self.step_number < self.config.max_steps {
-            if self.interrupt_flag.load(Ordering::SeqCst) {
-                return Err(AgentError::Interrupted);
+            // Check for interruption
+            if self.is_interrupted() {
+                return Err(Error::Interrupted);
             }
 
             self.step_number += 1;
-            let mut step = ActionStep {
-                step_number: self.step_number,
-                timing: Timing::start_now(),
-                ..Default::default()
-            };
+            debug!(step = self.step_number, "Executing step");
 
-            let result = self.execute_step(&mut step).await;
-            step.timing.complete();
-
-            // Invoke callbacks - metrics are collected via callback handlers
-            let ctx = self.create_callback_context();
-            self.callbacks.callback(&step, &ctx);
-
-            match result {
-                Ok(StepResult::FinalAnswer(answer)) => {
-                    if let Err(e) = self.validate_answer(&answer) {
-                        warn!(error = %e, "Final answer check failed");
-                        step.error = Some(format!("Final answer check failed: {e}"));
-                        self.memory.add_step(step);
-                        continue;
-                    }
-                    self.memory.add_step(step);
-
-                    // Callback for final answer
-                    let final_step = FinalAnswerStep {
-                        output: answer.clone(),
-                    };
-                    self.callbacks.callback(&final_step, &ctx);
-
-                    return Ok(answer);
-                }
-                Ok(StepResult::Continue) => {
-                    self.memory.add_step(step);
-                }
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    step.error = Some(err_msg.clone());
-                    self.memory.add_step(step);
-                    warn!(step = self.step_number, error = %e, "Step failed");
-                }
+            // Execute one step
+            match self.execute_step().await? {
+                StepResult::Continue => {}
+                StepResult::FinalAnswer(value) => return Ok(value),
             }
         }
 
-        Err(AgentError::max_steps(
-            self.step_number,
-            self.config.max_steps,
-        ))
+        Err(Error::max_steps(self.config.max_steps))
     }
 
-    /// Execute a single step: generate response and process tool calls.
-    async fn execute_step(&mut self, step: &mut ActionStep) -> Result<StepResult> {
-        let messages = self.memory.to_messages(false);
-        step.model_input_messages = Some(messages.clone());
+    /// Execute a single step.
+    async fn execute_step(&mut self) -> Result<StepResult> {
+        // Build the request
+        let request = self.build_request();
 
-        let options = GenerateOptions::new().with_tools(self.tools.definitions());
-        debug!(step = step.step_number, "Generating model response");
+        // Call the LLM
+        let response = self.provider.chat(&request).await?;
 
-        let message = self.generate_response(messages, options, step).await?;
+        // Record usage
+        let usage = response.usage;
 
-        // Use unified tool processor with parallel execution support and policy enforcement
-        let mut processor =
-            ToolProcessor::with_concurrency(&mut self.tools, self.config.max_parallel_tool_calls);
+        // Check for tool calls
+        if response.has_tool_calls() {
+            let tool_calls = response
+                .tool_calls()
+                .expect("tool_calls should be present when has_tool_calls is true");
 
-        // Add confirmation handler if configured
-        if let Some(ref handler) = self.confirmation_handler {
-            processor = processor.with_confirmation_handler(handler);
+            // Check for final_answer
+            for tc in tool_calls {
+                if tc.name() == FINAL_ANSWER_TOOL {
+                    let answer = tc.function.arguments_value();
+                    // Extract the actual answer from the arguments
+                    let final_value = answer.get("answer").cloned().unwrap_or(answer);
+                    info!("Final answer received");
+                    return Ok(StepResult::FinalAnswer(final_value));
+                }
+            }
+
+            // Execute tool calls
+            let results = self.execute_tool_calls(tool_calls).await;
+
+            // Record the action step
+            let mut action_step = ActionStep::new();
+            if let Some(text) = response.text() {
+                action_step = action_step.with_thought(text);
+            }
+            action_step.usage = usage;
+
+            for result in &results {
+                action_step.add_tool_call(ToolCallInfo {
+                    id: result.id.clone(),
+                    name: result.name.clone(),
+                    arguments: Value::Null, // TODO: store actual args
+                    output: result.result.as_ref().ok().cloned(),
+                    error: result.result.as_ref().err().map(ToString::to_string),
+                });
+            }
+
+            self.memory.add_step(MemoryStep::Action(action_step));
+
+            // Add assistant message with tool calls
+            self.memory.add_message(response.message.clone());
+
+            // Add tool response messages
+            for result in results {
+                let content = result.to_string_for_llm();
+                let tool_msg = Message::tool(&result.id, content);
+                self.memory.add_message(tool_msg);
+            }
+
+            return Ok(StepResult::Continue);
         }
 
-        let result = processor.process_parallel(step, &message).await?;
-        Ok(result.outcome)
+        // No tool calls - treat text response as implicit final answer
+        if let Some(text) = response.text()
+            && !text.is_empty()
+            && response.stop_reason != StopReason::ToolCalls
+        {
+            info!("Implicit final answer from text response");
+            return Ok(StepResult::FinalAnswer(Value::String(text)));
+        }
+
+        // Add the assistant message
+        self.memory.add_message(response.message);
+
+        Ok(StepResult::Continue)
     }
 
-    /// Validate the final answer against configured checks.
-    pub(crate) fn validate_answer(&self, answer: &Value) -> Result<()> {
-        if self.final_answer_checks.is_empty() {
-            return Ok(());
+    /// Build a chat request from current state.
+    fn build_request(&self) -> ChatRequest {
+        let mut request = ChatRequest::new(self.provider.default_model())
+            .messages(self.memory.messages().to_vec());
+
+        // Add tools
+        if !self.tools.is_empty() {
+            let mut tools = self.tools.to_tools();
+
+            // Add final_answer tool
+            tools.push(crate::tool::ToolDefinition::new(
+                FINAL_ANSWER_TOOL,
+                "Provide the final answer to the user's task. Call this when you have completed the task.",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "answer": {
+                            "description": "The final answer or result"
+                        }
+                    },
+                    "required": ["answer"]
+                }),
+            ));
+
+            request = request.tools(tools);
         }
-        self.final_answer_checks.validate(answer, &self.memory)
+
+        // Apply config
+        if let Some(temp) = self.config.temperature {
+            request = request.temperature(temp);
+        }
+        if let Some(max_tokens) = self.config.max_tokens {
+            request = request.max_tokens(max_tokens);
+        }
+
+        request
+    }
+
+    /// Execute tool calls and return results.
+    async fn execute_tool_calls(
+        &mut self,
+        tool_calls: &[crate::message::ToolCall],
+    ) -> Vec<ToolCallResult> {
+        let mut results = Vec::with_capacity(tool_calls.len());
+
+        for tc in tool_calls {
+            // Skip final_answer as it's handled separately
+            if tc.name() == FINAL_ANSWER_TOOL {
+                continue;
+            }
+
+            let result = self.execute_single_tool_call(tc).await;
+            results.push(result);
+        }
+
+        results
+    }
+
+    /// Execute a single tool call.
+    async fn execute_single_tool_call(&mut self, tc: &crate::message::ToolCall) -> ToolCallResult {
+        let name = tc.name();
+        let id = tc.id.clone();
+
+        // Check if tool exists
+        if !self.tools.contains(name) {
+            return ToolCallResult {
+                id,
+                name: name.to_owned(),
+                result: Err(crate::error::ToolError::not_found(name)),
+            };
+        }
+
+        // Check execution policy
+        if self.tools.is_forbidden(name) {
+            return ToolCallResult {
+                id,
+                name: name.to_owned(),
+                result: Err(crate::error::ToolError::forbidden(name)),
+            };
+        }
+
+        // Handle confirmation if required
+        if self.tools.requires_confirmation(name)
+            && let Some(handler) = &self.confirmation_handler
+        {
+            let args = tc.function.arguments_value();
+            let request = ToolConfirmationRequest::new(&id, name, args);
+            let response = handler.confirm(&request).await;
+
+            match response {
+                ToolConfirmationResponse::Denied => {
+                    return ToolCallResult {
+                        id,
+                        name: name.to_owned(),
+                        result: Err(crate::error::ToolError::confirmation_denied(name)),
+                    };
+                }
+                ToolConfirmationResponse::ApproveAll => {
+                    self.tools.mark_auto_approved(name);
+                }
+                ToolConfirmationResponse::Approved => {}
+            }
+        }
+
+        // Execute the tool
+        let args = tc.function.arguments_value();
+        debug!(tool = name, "Executing tool");
+
+        match self.tools.call(name, args).await {
+            Ok(output) => {
+                info!(tool = name, "Tool executed successfully");
+                ToolCallResult {
+                    id,
+                    name: name.to_owned(),
+                    result: Ok(output),
+                }
+            }
+            Err(e) => {
+                warn!(tool = name, error = %e, "Tool execution failed");
+                ToolCallResult {
+                    id,
+                    name: name.to_owned(),
+                    result: Err(e),
+                }
+            }
+        }
     }
 }
 
-impl Agent {
-    /// Generate a response from the model, handling both streaming and non-streaming.
-    pub(crate) async fn generate_response(
-        &self,
-        messages: Vec<ChatMessage>,
-        options: GenerateOptions,
-        step: &mut ActionStep,
-    ) -> Result<ChatMessage> {
-        if self.model.supports_streaming() {
-            self.generate_response_streaming(messages, options, step)
-                .await
-        } else {
-            self.generate_response_sync(messages, options, step).await
-        }
-    }
+/// Result of executing a single step.
+enum StepResult {
+    /// Continue to next step.
+    Continue,
+    /// Final answer received.
+    FinalAnswer(Value),
+}
 
-    /// Generate response using streaming API.
-    async fn generate_response_streaming(
-        &self,
-        messages: Vec<ChatMessage>,
-        options: GenerateOptions,
-        step: &mut ActionStep,
-    ) -> Result<ChatMessage> {
-        let mut stream = self.model.generate_stream(messages, options).await?;
-        let mut deltas = Vec::new();
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_step_result() {
+        // Basic test for step result enum
+        use super::StepResult;
 
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(delta) => {
-                    if let Some(usage) = &delta.token_usage {
-                        step.token_usage = Some(*usage);
-                    }
-                    deltas.push(delta);
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        let cont = StepResult::Continue;
+        assert!(matches!(cont, StepResult::Continue));
 
-        let message = crate::message::aggregate_stream_deltas(&deltas);
-        step.model_output_message = Some(message.clone());
-        step.model_output = message.text_content();
-        Ok(message)
-    }
-
-    /// Generate response using synchronous API.
-    async fn generate_response_sync(
-        &self,
-        messages: Vec<ChatMessage>,
-        options: GenerateOptions,
-        step: &mut ActionStep,
-    ) -> Result<ChatMessage> {
-        let response = self.model.generate(messages, options).await?;
-        step.model_output_message = Some(response.message.clone());
-        step.token_usage = response.token_usage;
-        step.model_output = response.message.text_content();
-        Ok(response.message)
+        let final_ans = StepResult::FinalAnswer(serde_json::json!(42));
+        assert!(matches!(final_ans, StepResult::FinalAnswer(_)));
     }
 }

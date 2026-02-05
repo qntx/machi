@@ -1,415 +1,253 @@
-//! Agent builder for constructing agents with a fluent API.
+//! Agent builder for fluent construction.
 
-use crate::{
-    callback::CallbackRegistry,
-    error::{AgentError, Result},
-    managed::{BoxedManagedAgent, ManagedAgentRegistry},
-    memory::AgentMemory,
-    prompts::{PromptRender, PromptTemplates},
-    providers::Model,
-    tool::{BoxedConfirmationHandler, BoxedTool, FinalAnswerTool, ToolBox, ToolExecutionPolicy},
-};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use std::{collections::HashMap, sync::Arc};
+use crate::chat::ChatProvider;
+use crate::error::{Error, Result};
+use crate::tool::{BoxedConfirmationHandler, BoxedTool, Tool, ToolBox, ToolExecutionPolicy};
 
-use super::{Agent, AgentConfig, FinalAnswerChecks};
+use super::Agent;
+use super::config::AgentConfig;
+use super::memory::AgentMemory;
 
-/// Builder for [`Agent`].
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let agent = Agent::builder()
-///     .model(my_model)
-///     .tool(Box::new(MyTool))
-///     .max_steps(10)
-///     .build();
-/// ```
+/// Default system prompt for agents.
+const DEFAULT_SYSTEM_PROMPT: &str = r"You are a helpful AI assistant that can use tools to accomplish tasks.
+
+When you need to perform an action, use the available tools. Always think step by step about what you need to do.
+
+When you have completed the task or have a final answer, call the `final_answer` tool with your response.";
+
+/// Builder for creating agents with a fluent API.
 #[derive(Default)]
 pub struct AgentBuilder {
-    model: Option<Box<dyn Model>>,
-    tools: Vec<BoxedTool>,
-    managed_agents: Vec<BoxedManagedAgent>,
-    config: AgentConfig,
-    prompt_templates: Option<PromptTemplates>,
-    custom_instructions: Option<String>,
-    final_answer_checks: FinalAnswerChecks,
-    callbacks: CallbackRegistry,
+    provider: Option<Arc<dyn ChatProvider>>,
+    tools: ToolBox,
+    /// Agent configuration.
+    pub config: AgentConfig,
+    system_prompt: Option<String>,
     confirmation_handler: Option<BoxedConfirmationHandler>,
-    tool_policies: Vec<(String, ToolExecutionPolicy)>,
-}
-
-impl std::fmt::Debug for AgentBuilder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AgentBuilder")
-            .field("has_model", &self.model.is_some())
-            .field("tools", &self.tools.len())
-            .field("managed_agents", &self.managed_agents.len())
-            .finish_non_exhaustive()
-    }
 }
 
 impl AgentBuilder {
-    /// Create a new builder with default settings.
-    #[inline]
+    /// Create a new agent builder.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            model: None,
-            tools: Vec::new(),
-            managed_agents: Vec::new(),
-            config: AgentConfig::new(),
-            prompt_templates: None,
-            custom_instructions: None,
-            final_answer_checks: FinalAnswerChecks::new(),
-            callbacks: CallbackRegistry::new(),
+            provider: None,
+            tools: ToolBox::new(),
+            config: AgentConfig::default(),
+            system_prompt: None,
             confirmation_handler: None,
-            tool_policies: Vec::new(),
         }
     }
 
-    /// Set the language model.
+    /// Set the LLM provider.
     #[must_use]
-    pub fn model(mut self, model: impl Model + 'static) -> Self {
-        self.model = Some(Box::new(model));
+    pub fn provider(mut self, provider: impl ChatProvider + 'static) -> Self {
+        self.provider = Some(Arc::new(provider));
         self
     }
 
-    /// Add a tool to the agent.
+    /// Set the LLM provider from an Arc.
     #[must_use]
-    pub fn tool(mut self, tool: BoxedTool) -> Self {
-        self.tools.push(tool);
+    pub fn provider_arc(mut self, provider: Arc<dyn ChatProvider>) -> Self {
+        self.provider = Some(provider);
+        self
+    }
+
+    /// Add a tool to the agent with default policy (Auto).
+    #[must_use]
+    pub fn tool<T: Tool + 'static>(mut self, tool: T) -> Self
+    where
+        T::Output: 'static,
+    {
+        self.tools.add(tool);
+        self
+    }
+
+    /// Add a tool with a specific execution policy.
+    #[must_use]
+    pub fn tool_with_policy<T: Tool + 'static>(
+        mut self,
+        tool: T,
+        policy: ToolExecutionPolicy,
+    ) -> Self
+    where
+        T::Output: 'static,
+    {
+        self.tools.add_with_policy(tool, policy);
+        self
+    }
+
+    /// Add a boxed tool to the agent with default policy (Auto).
+    #[must_use]
+    pub fn tool_boxed(mut self, tool: BoxedTool) -> Self {
+        self.tools.add_boxed(tool);
+        self
+    }
+
+    /// Add a boxed tool with a specific execution policy.
+    #[must_use]
+    pub fn tool_boxed_with_policy(mut self, tool: BoxedTool, policy: ToolExecutionPolicy) -> Self {
+        self.tools.add_boxed_with_policy(tool, policy);
         self
     }
 
     /// Add multiple tools to the agent.
     #[must_use]
-    pub fn tools(mut self, tools: impl IntoIterator<Item = BoxedTool>) -> Self {
-        self.tools.extend(tools);
+    pub fn tools(mut self, tools: Vec<BoxedTool>) -> Self {
+        for tool in tools {
+            self.tools.add_boxed(tool);
+        }
         self
     }
 
-    /// Add base tools commonly used by agents.
-    ///
-    /// Similar to smolagents' `add_base_tools=True` option, this adds:
-    /// - `FinalAnswerTool` - for providing final answers
-    /// - `VisitWebpageTool` - for reading webpage content
-    ///
-    /// Note: `FinalAnswerTool` is always added automatically, so this mainly
-    /// adds `VisitWebpageTool` for web browsing capability.
-    ///
-    /// Requires the `toolkit` feature to be enabled.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .add_base_tools()
-    ///     .build();
-    /// ```
-    #[cfg(feature = "toolkit")]
-    #[must_use]
-    pub fn add_base_tools(mut self) -> Self {
-        self.tools.extend(crate::tools::base_tools());
-        self
-    }
-
-    /// Set the maximum number of steps (default: 20).
-    #[must_use]
-    pub const fn max_steps(mut self, max: usize) -> Self {
-        self.config.max_steps = max;
-        self
-    }
-
-    /// Set the planning interval.
-    #[must_use]
-    pub const fn planning_interval(mut self, interval: usize) -> Self {
-        self.config.planning_interval = Some(interval);
-        self
-    }
-
-    /// Set the maximum number of concurrent tool calls.
-    ///
-    /// When a model returns multiple tool calls in a single response,
-    /// they can be executed in parallel. This setting controls the
-    /// maximum concurrency level.
-    ///
-    /// - `None` (default): Unlimited parallelism
-    /// - `Some(1)`: Sequential execution (tools run one at a time)
-    /// - `Some(n)`: Up to `n` tools run concurrently
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// // Allow up to 4 concurrent tool executions
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .max_parallel_tool_calls(4)
-    ///     .build();
-    ///
-    /// // Force sequential execution
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .max_parallel_tool_calls(1)
-    ///     .build();
-    /// ```
-    #[must_use]
-    pub const fn max_parallel_tool_calls(mut self, max: usize) -> Self {
-        self.config.max_parallel_tool_calls = Some(max);
-        self
-    }
-
-    /// Set the agent's name.
-    #[must_use]
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.config.name = Some(name.into());
-        self
-    }
-
-    /// Set the agent's description.
-    #[must_use]
-    pub fn description(mut self, desc: impl Into<String>) -> Self {
-        self.config.description = Some(desc.into());
-        self
-    }
-
-    /// Set custom prompt templates.
-    ///
-    /// By default, uses the built-in tool-calling agent templates.
-    #[must_use]
-    pub fn prompt_templates(mut self, templates: PromptTemplates) -> Self {
-        self.prompt_templates = Some(templates);
-        self
-    }
-
-    /// Set custom instructions to be included in the system prompt.
-    #[must_use]
-    pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
-        self.custom_instructions = Some(instructions.into());
-        self
-    }
-
-    /// Add a managed agent to delegate tasks to.
-    ///
-    /// Managed agents can be called by the parent agent as if they were tools,
-    /// allowing for multi-agent collaboration.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let researcher = Agent::builder()
-    ///     .model(model.clone())
-    ///     .name("researcher")
-    ///     .description("Expert at finding information")
-    ///     .tool(Box::new(WebSearchTool::new()))
-    ///     .build();
-    ///
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .managed_agent(Box::new(researcher))
-    ///     .build();
-    /// ```
-    #[must_use]
-    pub fn managed_agent(mut self, agent: BoxedManagedAgent) -> Self {
-        self.managed_agents.push(agent);
-        self
-    }
-
-    /// Add multiple managed agents.
-    #[must_use]
-    pub fn managed_agents(mut self, agents: impl IntoIterator<Item = BoxedManagedAgent>) -> Self {
-        self.managed_agents.extend(agents);
-        self
-    }
-
-    /// Set final answer validation checks.
-    ///
-    /// These checks run before accepting a final answer from the agent.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .final_answer_checks(
-    ///         FinalAnswerChecks::new()
-    ///             .not_null()
-    ///             .not_empty()
-    ///     )
-    ///     .build();
-    /// ```
-    #[must_use]
-    pub fn final_answer_checks(mut self, checks: FinalAnswerChecks) -> Self {
-        self.final_answer_checks = checks;
-        self
-    }
-
-    /// Set callback registry for step events.
-    ///
-    /// Callbacks are invoked when steps complete, allowing for monitoring,
-    /// logging, and custom event handling.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use machi::callback::{CallbackRegistry, CallbackContext};
-    /// use machi::memory::ActionStep;
-    ///
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .callbacks(
-    ///         CallbackRegistry::builder()
-    ///             .on_action(|step, ctx| {
-    ///                 println!("Step {} completed", step.step_number);
-    ///             })
-    ///             .build()
-    ///     )
-    ///     .build();
-    /// ```
-    #[must_use]
-    pub fn callbacks(mut self, registry: CallbackRegistry) -> Self {
-        self.callbacks = registry;
-        self
-    }
-
-    /// Set the confirmation handler for tools requiring human approval.
-    ///
-    /// This handler is called when a tool with `RequireConfirmation` policy
-    /// is about to be executed.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use machi::tool::{ConfirmationHandler, ToolConfirmationRequest, ToolConfirmationResponse};
-    ///
-    /// struct MyHandler;
-    ///
-    /// #[async_trait::async_trait]
-    /// impl ConfirmationHandler for MyHandler {
-    ///     async fn confirm(&self, req: &ToolConfirmationRequest) -> ToolConfirmationResponse {
-    ///         println!("Tool '{}' wants to execute", req.name);
-    ///         ToolConfirmationResponse::Approved
-    ///     }
-    /// }
-    ///
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .confirmation_handler(Box::new(MyHandler))
-    ///     .build();
-    /// ```
-    #[must_use]
-    pub fn confirmation_handler(mut self, handler: BoxedConfirmationHandler) -> Self {
-        self.confirmation_handler = Some(handler);
-        self
-    }
-
-    /// Set the execution policy for a specific tool.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use machi::tool::ToolExecutionPolicy;
-    ///
-    /// let agent = Agent::builder()
-    ///     .model(model)
-    ///     .tool_policy("delete_file", ToolExecutionPolicy::RequireConfirmation)
-    ///     .tool_policy("dangerous_tool", ToolExecutionPolicy::Forbidden)
-    ///     .build();
-    /// ```
+    /// Set the tool execution policy for a specific tool.
     #[must_use]
     pub fn tool_policy(
         mut self,
         tool_name: impl Into<String>,
         policy: ToolExecutionPolicy,
     ) -> Self {
-        self.tool_policies.push((tool_name.into(), policy));
+        self.tools.set_policy(tool_name, policy);
         self
     }
 
-    /// Set execution policies for multiple tools at once.
+    /// Set the system prompt.
     #[must_use]
-    pub fn tool_policies(
-        mut self,
-        policies: impl IntoIterator<Item = (impl Into<String>, ToolExecutionPolicy)>,
-    ) -> Self {
-        for (name, policy) in policies {
-            self.tool_policies.push((name.into(), policy));
-        }
+    pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.system_prompt = Some(prompt.into());
+        self
+    }
+
+    /// Set the maximum number of steps.
+    #[must_use]
+    pub const fn max_steps(mut self, max_steps: usize) -> Self {
+        self.config.max_steps = max_steps;
+        self
+    }
+
+    /// Set the agent name.
+    #[must_use]
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.config.name = Some(name.into());
+        self
+    }
+
+    /// Set the agent description.
+    #[must_use]
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.config.description = Some(description.into());
+        self
+    }
+
+    /// Set custom instructions.
+    #[must_use]
+    pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
+        self.config.instructions = Some(instructions.into());
+        self
+    }
+
+    /// Set the temperature for LLM calls.
+    #[must_use]
+    pub const fn temperature(mut self, temperature: f32) -> Self {
+        self.config.temperature = Some(temperature);
+        self
+    }
+
+    /// Set the max tokens for LLM calls.
+    #[must_use]
+    pub const fn max_tokens(mut self, max_tokens: u32) -> Self {
+        self.config.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Set the confirmation handler.
+    #[must_use]
+    pub fn confirmation_handler(mut self, handler: BoxedConfirmationHandler) -> Self {
+        self.confirmation_handler = Some(handler);
+        self
+    }
+
+    /// Set the full configuration.
+    #[must_use]
+    pub fn config(mut self, config: AgentConfig) -> Self {
+        self.config = config;
         self
     }
 
     /// Build the agent.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if no model is provided. Use [`try_build`](Self::try_build) for
-    /// a fallible alternative.
-    #[must_use]
-    pub fn build(self) -> Agent {
-        self.try_build().expect("Model is required")
-    }
+    /// Returns an error if no provider is set.
+    pub fn build(self) -> Result<Agent> {
+        let provider = self
+            .provider
+            .ok_or_else(|| Error::agent("Provider is required"))?;
 
-    /// Try to build the agent, returning an error if configuration is invalid.
-    pub fn try_build(self) -> Result<Agent> {
-        let model = self
-            .model
-            .ok_or_else(|| AgentError::configuration("Model is required"))?;
-
-        let mut tools = ToolBox::new();
-        for tool in self.tools {
-            tools.add_boxed(tool);
-        }
-        tools.add(FinalAnswerTool);
-
-        let mut managed_agents = ManagedAgentRegistry::new();
-        for agent in self.managed_agents {
-            if agent.name().is_empty() {
-                return Err(AgentError::configuration("All managed agents need a name"));
-            }
-            if agent.description().is_empty() {
-                return Err(AgentError::configuration(
-                    "All managed agents need a description",
-                ));
-            }
-            if tools.get(agent.name()).is_some() {
-                return Err(AgentError::configuration(format!(
-                    "Managed agent name '{}' conflicts with a tool name",
-                    agent.name()
-                )));
-            }
-            managed_agents.try_add(agent)?;
-        }
-
-        for tool in managed_agents.as_tools() {
-            tools.add_boxed(tool);
-        }
-
-        // Apply tool execution policies
-        for (name, policy) in self.tool_policies {
-            tools.set_policy(name, policy);
-        }
-
-        let prompt_renderer = self
-            .prompt_templates
-            .map_or_else(PromptRender::default, PromptRender::new);
+        let system_prompt = self
+            .system_prompt
+            .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_owned());
 
         Ok(Agent {
-            model,
-            tools,
-            managed_agents,
+            provider,
+            tools: self.tools,
             config: self.config,
-            memory: AgentMemory::default(),
-            system_prompt: String::new(),
-            prompt_renderer,
-            interrupt_flag: Arc::default(),
+            memory: AgentMemory::new(),
+            system_prompt,
+            interrupt_flag: Arc::new(AtomicBool::new(false)),
             step_number: 0,
             state: HashMap::new(),
-            custom_instructions: self.custom_instructions,
-            final_answer_checks: self.final_answer_checks,
-            callbacks: self.callbacks,
-            run_start: std::time::Instant::now(),
             confirmation_handler: self.confirmation_handler,
+            run_start: std::time::Instant::now(),
         })
+    }
+}
+
+impl std::fmt::Debug for AgentBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentBuilder")
+            .field("has_provider", &self.provider.is_some())
+            .field("tools", &self.tools)
+            .field("config", &self.config)
+            .field("system_prompt", &self.system_prompt)
+            .field(
+                "has_confirmation_handler",
+                &self.confirmation_handler.is_some(),
+            )
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_builder_default() {
+        let builder = AgentBuilder::new();
+        assert!(builder.provider.is_none());
+        assert!(builder.tools.is_empty());
+    }
+
+    #[test]
+    fn test_builder_config() {
+        let builder = AgentBuilder::new()
+            .max_steps(10)
+            .name("test_agent")
+            .temperature(0.7);
+
+        assert_eq!(builder.config.max_steps, 10);
+        assert_eq!(builder.config.name, Some("test_agent".to_owned()));
+        assert_eq!(builder.config.temperature, Some(0.7));
+    }
+
+    #[test]
+    fn test_builder_no_provider_error() {
+        let result = AgentBuilder::new().build();
+        assert!(result.is_err());
     }
 }

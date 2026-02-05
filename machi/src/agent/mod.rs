@@ -6,54 +6,39 @@
 //! # Example
 //!
 //! ```rust,ignore
+//! use machi::prelude::*;
+//!
+//! let provider = OpenAI::from_env()?;
 //! let mut agent = Agent::builder()
-//!     .model(model)
+//!     .provider(provider)
 //!     .tool(Box::new(MyTool))
-//!     .build();
+//!     .build()?;
 //!
 //! let result = agent.run("What is 2 + 2?").await?;
 //! ```
 
 mod builder;
-mod checks;
 mod config;
-mod events;
 mod executor;
-mod options;
-mod prompts_render;
+mod memory;
 mod result;
-mod streaming;
-mod tool_processor;
 
 pub use builder::AgentBuilder;
-pub use checks::{FinalAnswerCheck, FinalAnswerChecks};
 pub use config::AgentConfig;
-pub use events::{AgentStream, RunState, StreamEvent, StreamItem};
-pub use options::RunOptions;
-pub use result::RunResult;
+pub use memory::{ActionStep, AgentMemory, MemoryStep, PlanningStep, TaskStep, Timing};
+pub use result::{RunResult, RunState};
 
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use futures::Stream;
 use serde_json::Value;
 use tracing::{info, instrument, warn};
 
-use crate::{
-    callback::{CallbackContext, CallbackRegistry},
-    error::{AgentError, Result},
-    managed::{ManagedAgent, ManagedAgentRegistry},
-    memory::{AgentMemory, FinalAnswerStep, TaskStep, Timing},
-    multimodal::AgentImage,
-    prompts::PromptRender,
-    providers::Model,
-    tool::{BoxedConfirmationHandler, ToolBox},
-};
+use crate::chat::ChatProvider;
+use crate::error::Result;
+use crate::tool::{BoxedConfirmationHandler, ToolBox};
+use crate::usage::Usage;
 
 /// AI agent that uses LLM function calling to execute tasks with tools.
 ///
@@ -61,24 +46,28 @@ use crate::{
 /// 1. Receive a task
 /// 2. Think and decide which tool to call
 /// 3. Execute the tool and observe the result
-/// 4. Repeat until `final_answer` is called or max steps reached
+/// 4. Repeat until task is complete or max steps reached
 pub struct Agent {
-    pub(crate) model: Box<dyn Model>,
-    pub(crate) tools: ToolBox,
-    pub(crate) managed_agents: ManagedAgentRegistry,
-    pub(crate) config: AgentConfig,
-    pub(crate) memory: AgentMemory,
-    pub(crate) system_prompt: String,
-    pub(crate) prompt_renderer: PromptRender,
-    pub(crate) interrupt_flag: Arc<AtomicBool>,
-    pub(crate) step_number: usize,
-    pub(crate) state: HashMap<String, Value>,
-    pub(crate) custom_instructions: Option<String>,
-    pub(crate) final_answer_checks: FinalAnswerChecks,
-    pub(crate) callbacks: CallbackRegistry,
-    pub(crate) run_start: std::time::Instant,
-    /// Optional confirmation handler for tools requiring human approval.
-    pub(crate) confirmation_handler: Option<BoxedConfirmationHandler>,
+    /// The LLM provider.
+    provider: Arc<dyn ChatProvider>,
+    /// Available tools.
+    tools: ToolBox,
+    /// Agent configuration.
+    config: AgentConfig,
+    /// Agent memory (conversation history).
+    memory: AgentMemory,
+    /// System prompt.
+    system_prompt: String,
+    /// Interrupt flag for stopping execution.
+    interrupt_flag: Arc<AtomicBool>,
+    /// Current step number.
+    step_number: usize,
+    /// Context variables.
+    state: HashMap<String, Value>,
+    /// Optional confirmation handler for tools.
+    confirmation_handler: Option<BoxedConfirmationHandler>,
+    /// Run start time.
+    run_start: std::time::Instant,
 }
 
 impl std::fmt::Debug for Agent {
@@ -86,7 +75,6 @@ impl std::fmt::Debug for Agent {
         f.debug_struct("Agent")
             .field("config", &self.config)
             .field("tools", &self.tools)
-            .field("managed_agents", &self.managed_agents)
             .field("step", &self.step_number)
             .finish_non_exhaustive()
     }
@@ -101,30 +89,26 @@ impl Agent {
     }
 
     /// Run the agent with a task.
-    ///
-    /// This is the unified entry point for agent execution. Use [`RunOptions`]
-    /// to configure images, context variables, and other settings.
-    /// ```
-    #[instrument(skip(self, options), fields(max_steps = self.config.max_steps))]
-    pub async fn run(&mut self, options: impl Into<RunOptions>) -> Result<Value> {
-        let opts = options.into();
-        self.run_internal(opts)
-            .await
+    #[instrument(skip(self, task), fields(max_steps = self.config.max_steps))]
+    pub async fn run(&mut self, task: impl Into<String>) -> Result<Value> {
+        let task = task.into();
+        self.prepare_run(&task);
+        info!("Starting agent run");
+
+        let timing = Timing::start_now();
+        let result = self.execute_loop().await;
+        let mut final_timing = timing;
+        final_timing.complete();
+
+        self.complete_run(result, final_timing)
             .into_result(self.config.max_steps)
     }
 
     /// Run the agent and return detailed [`RunResult`] with metrics.
-    ///
-    /// This always returns the full [`RunResult`] including token usage,
-    /// timing, and step information.
-    #[instrument(skip(self, options), fields(max_steps = self.config.max_steps))]
-    pub async fn run_detailed(&mut self, options: impl Into<RunOptions>) -> RunResult {
-        self.run_internal(options.into()).await
-    }
-
-    /// Internal run implementation.
-    async fn run_internal(&mut self, options: RunOptions) -> RunResult {
-        self.prepare_run(&options.task, options.images, options.context);
+    #[instrument(skip(self, task), fields(max_steps = self.config.max_steps))]
+    pub async fn run_detailed(&mut self, task: impl Into<String>) -> RunResult {
+        let task = task.into();
+        self.prepare_run(&task);
         info!("Starting agent run");
 
         let timing = Timing::start_now();
@@ -135,76 +119,16 @@ impl Agent {
         self.complete_run(result, final_timing)
     }
 
-    /// Stream execution events.
-    ///
-    /// This streams events at both step-level and token-level granularity,
-    /// enabling real-time feedback during agent runs.
-    #[instrument(skip(self, options), fields(max_steps = self.config.max_steps))]
-    pub fn stream(
-        &mut self,
-        options: impl Into<RunOptions>,
-    ) -> impl Stream<Item = StreamItem> + '_ {
-        let opts = options.into();
-        self.prepare_run(&opts.task, opts.images, opts.context);
-        self.stream_execution()
-    }
-
-    /// Execute as a managed sub-agent.
-    pub async fn call_as_managed(&mut self, task: &str) -> Result<String> {
-        let agent_name = self.config.name.clone().unwrap_or_else(|| "agent".into());
-        let full_task = self.format_task_prompt(&agent_name, task);
-        let result: Value = self.run(&full_task).await?;
-
-        let report = match result {
-            Value::Null => "No result produced".to_string(),
-            Value::String(s) => s,
-            other => other.to_string(),
-        };
-
-        let mut answer = self.format_report(&agent_name, &report);
-
-        if self.config.provide_run_summary.unwrap_or(false) {
-            self.append_summary(&mut answer);
-        }
-
-        Ok(answer)
-    }
-
-    /// Get the agent's name.
-    #[inline]
-    pub fn name(&self) -> Option<&str> {
-        self.config.name.as_deref()
-    }
-
-    /// Get the agent's description.
-    #[inline]
-    pub fn description(&self) -> Option<&str> {
-        self.config.description.as_deref()
-    }
-
     /// Get the agent's memory.
     #[inline]
     pub const fn memory(&self) -> &AgentMemory {
         &self.memory
     }
 
-    /// Get mutable access to the agent's memory.
-    #[inline]
-    pub const fn memory_mut(&mut self) -> &mut AgentMemory {
-        &mut self.memory
-    }
-
     /// Get the current step number.
     #[inline]
     pub const fn current_step(&self) -> usize {
         self.step_number
-    }
-
-    /// Get the elapsed time since the run started.
-    #[inline]
-    #[must_use]
-    pub fn elapsed(&self) -> std::time::Duration {
-        self.run_start.elapsed()
     }
 
     /// Request the agent to stop after the current step.
@@ -227,100 +151,67 @@ impl Agent {
         self.interrupt_flag.store(false, Ordering::SeqCst);
         self.run_start = std::time::Instant::now();
     }
+
+    /// Get total token usage.
+    #[must_use]
+    pub fn total_usage(&self) -> Usage {
+        self.memory.total_usage()
+    }
 }
 
 impl Agent {
-    /// Create a callback context for the current state.
-    fn create_callback_context(&self) -> CallbackContext {
-        CallbackContext::new(self.step_number, self.config.max_steps)
-            .with_agent_name(self.config.name.clone().unwrap_or_default())
-    }
-
-    fn prepare_run(
-        &mut self,
-        task: &str,
-        images: Vec<AgentImage>,
-        context: HashMap<String, Value>,
-    ) {
+    fn prepare_run(&mut self, task: &str) {
         self.memory.reset();
         self.step_number = 0;
         self.interrupt_flag.store(false, Ordering::SeqCst);
-        self.state = context;
+        self.run_start = std::time::Instant::now();
 
-        self.system_prompt = self.render_system_prompt();
-        self.memory
-            .system_prompt
-            .system_prompt
-            .clone_from(&self.system_prompt);
+        // Add system prompt
+        self.memory.set_system_prompt(&self.system_prompt);
 
-        let task_text = self.format_task(task);
-        let task_step = if images.is_empty() {
-            TaskStep::new(task_text)
-        } else {
-            TaskStep::with_images(task_text, images)
-        };
-        self.memory.add_step(task_step);
+        // Add task
+        let task_step = TaskStep::new(task);
+        self.memory.add_step(MemoryStep::Task(task_step));
     }
 
-    fn format_task(&self, task: &str) -> String {
-        if self.state.is_empty() {
-            task.into()
-        } else {
-            let context = serde_json::to_string_pretty(&self.state).unwrap_or_default();
-            let mut text = String::with_capacity(task.len() + 32 + context.len());
-            text.push_str(task);
-            text.push_str("\n\nAdditional context provided:\n");
-            text.push_str(&context);
-            text
-        }
-    }
-
-    fn complete_run(&mut self, result: Result<Value>, timing: Timing) -> RunResult {
-        let token_usage = self.memory.total_token_usage();
+    fn complete_run(&self, result: Result<Value>, timing: Timing) -> RunResult {
+        let token_usage = self.memory.total_usage();
         let steps_taken = self.step_number;
 
         match result {
             Ok(answer) => {
-                self.memory.add_step(FinalAnswerStep {
-                    output: answer.clone(),
-                });
                 info!("Agent completed successfully");
                 RunResult {
                     output: Some(answer),
                     state: RunState::Success,
-                    token_usage,
+                    token_usage: Some(token_usage),
                     steps_taken,
                     timing,
                     error: None,
                 }
             }
-            Err(AgentError::MaxSteps { .. }) => {
-                self.memory.add_step(FinalAnswerStep {
-                    output: Value::String("Maximum steps reached".into()),
-                });
-                RunResult {
-                    output: None,
-                    state: RunState::MaxStepsReached,
-                    token_usage,
-                    steps_taken,
-                    timing,
-                    error: Some("Maximum steps reached".to_string()),
-                }
-            }
-            Err(AgentError::Interrupted) => RunResult {
+            Err(crate::error::Error::MaxSteps { .. }) => RunResult {
                 output: None,
-                state: RunState::Interrupted,
-                token_usage,
+                state: RunState::MaxStepsReached,
+                token_usage: Some(token_usage),
                 steps_taken,
                 timing,
-                error: Some("Agent was interrupted".to_string()),
+                error: Some("Maximum steps reached".to_owned()),
+            },
+            Err(crate::error::Error::Interrupted) => RunResult {
+                output: None,
+                state: RunState::Interrupted,
+                token_usage: Some(token_usage),
+                steps_taken,
+                timing,
+                error: Some("Agent was interrupted".to_owned()),
             },
             Err(e) => {
                 warn!(error = %e, "Agent run failed");
                 RunResult {
                     output: None,
                     state: RunState::Failed,
-                    token_usage,
+                    token_usage: Some(token_usage),
                     steps_taken,
                     timing,
                     error: Some(e.to_string()),
@@ -330,41 +221,14 @@ impl Agent {
     }
 }
 
-#[async_trait::async_trait]
-impl ManagedAgent for Agent {
-    fn name(&self) -> &str {
-        self.config.name.as_deref().unwrap_or("agent")
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    fn description(&self) -> &str {
-        self.config
-            .description
-            .as_deref()
-            .unwrap_or("A helpful AI agent")
-    }
-
-    async fn call(
-        &self,
-        task: &str,
-        _additional_args: Option<HashMap<String, Value>>,
-    ) -> Result<String> {
-        let agent_name = ManagedAgent::name(self).to_string();
-        let agent_desc = ManagedAgent::description(self).to_string();
-        let _full_task = self.format_task_prompt(&agent_name, task);
-
-        let report = format!(
-            "### 1. Task outcome (short version):\n\
-             Received task: {task}\n\n\
-             ### 2. Task outcome (extremely detailed version):\n\
-             The managed agent '{agent_name}' received the task. The task has been delegated.\n\n\
-             ### 3. Additional context:\n\
-             Agent description: {agent_desc}"
-        );
-
-        Ok(self.format_report(&agent_name, &report))
-    }
-
-    fn provide_run_summary(&self) -> bool {
-        self.config.provide_run_summary.unwrap_or(false)
+    #[test]
+    fn test_agent_builder() {
+        // Basic builder test - actual creation requires a provider
+        let builder = Agent::builder();
+        assert!(builder.config.max_steps > 0);
     }
 }

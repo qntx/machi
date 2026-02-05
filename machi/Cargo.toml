@@ -4,48 +4,44 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "A Rust implementation of smolagents - lightweight AI agents framework"
+description = "A lightweight, ergonomic framework for building AI agents in Rust"
+keywords = ["ai", "agent", "llm", "openai", "ollama"]
+categories = ["api-bindings", "asynchronous"]
 
 [features]
-default = ["mcp", "toolkit", "derive", "native"]
-mcp = ["dep:rmcp"]
-toolkit = ["dep:scraper"]
-derive = ["dep:machi-derive"]
-# Native platform support (tokio runtime, file system, etc.)
-native = ["tokio/full"]
-# WebAssembly support
-wasm = ["getrandom/wasm_js", "chrono/wasmbind", "uuid/js"]
+default = ["openai", "ollama", "derive", "mcp", "toolkit"]
+openai = []
+ollama = []
+derive = ["machi-derive"]
+mcp = ["rmcp"]
+toolkit = []
+full = ["openai", "ollama", "derive", "mcp", "toolkit"]
 
 [dependencies]
-anyhow.workspace = true
+# Core dependencies
 async-trait.workspace = true
 base64.workspace = true
 bytes.workspace = true
-chrono.workspace = true
-convert_case.workspace = true
 futures.workspace = true
-machi-derive = { workspace = true, optional = true }
-regex.workspace = true
-scraper = { workspace = true, optional = true }
 reqwest.workspace = true
-rmcp = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml.workspace = true
-minijinja.workspace = true
-async-stream.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-getrandom = { workspace = true, optional = true }
 tracing.workspace = true
-urlencoding.workspace = true
 uuid.workspace = true
-html-escape.workspace = true
+
+# Optional dependencies
+machi-derive = { workspace = true, optional = true }
+rmcp = { workspace = true, optional = true }
+
+# Template rendering
+minijinja.workspace = true
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tokio-test.workspace = true
 tracing-subscriber.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

@@ -1030,7 +1030,7 @@ mod tests {
                 ..Default::default()
             };
 
-            let cloned = options.clone();
+            let cloned = options;
 
             assert_eq!(cloned.temperature, Some(0.5));
             assert_eq!(cloned.seed, Some(42));
@@ -1062,7 +1062,7 @@ mod tests {
                 },
             };
 
-            let cloned = tool.clone();
+            let cloned = tool;
 
             assert_eq!(cloned.function.name, "test");
         }
@@ -1072,15 +1072,15 @@ mod tests {
             let options = OllamaOptions::default();
             let msg = OllamaMessage {
                 role: "user".to_owned(),
-                content: "".to_owned(),
+                content: String::new(),
                 images: None,
                 tool_calls: None,
             };
             let tool = OllamaTool {
                 tool_type: "function".to_owned(),
                 function: OllamaFunction {
-                    name: "".to_owned(),
-                    description: "".to_owned(),
+                    name: String::new(),
+                    description: String::new(),
                     parameters: serde_json::json!({}),
                 },
             };

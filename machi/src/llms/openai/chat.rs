@@ -360,7 +360,7 @@ mod tests {
 
         #[test]
         fn handles_empty_message() {
-            let json = r#"{}"#;
+            let json = r"{}";
             let msg: OpenAIResponseMessage = serde_json::from_str(json).unwrap();
 
             assert!(msg.content.is_none());

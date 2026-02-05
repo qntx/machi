@@ -150,7 +150,7 @@ impl SpeechToTextProvider for OpenAI {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::cast_possible_truncation)]
 mod tests {
     use super::*;
     use crate::audio::TextToSpeechProvider;
@@ -378,7 +378,7 @@ mod tests {
         fn handles_various_languages() {
             let languages = ["en", "ja", "zh", "es", "fr", "de", "ko", "ru"];
             for lang in languages {
-                let json = format!(r#"{{"text": "test", "language": "{}"}}"#, lang);
+                let json = format!(r#"{{"text": "test", "language": "{lang}"}}"#);
                 let response: OpenAITranscriptionResponse = serde_json::from_str(&json).unwrap();
                 assert_eq!(response.language, Some(lang.to_owned()));
             }
@@ -609,7 +609,7 @@ mod tests {
 
             let json = serde_json::to_value(&req).unwrap();
             assert!(json["input"].as_str().unwrap().contains("<test>"));
-            assert!(json["input"].as_str().unwrap().contains("&"));
+            assert!(json["input"].as_str().unwrap().contains('&'));
         }
     }
 }

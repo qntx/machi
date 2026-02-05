@@ -97,6 +97,7 @@ fn convert_chunk(chunk: &OllamaStreamChunk) -> StreamChunk {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::match_same_arms)]
 mod tests {
     use super::*;
 

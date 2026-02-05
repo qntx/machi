@@ -304,7 +304,7 @@ mod tests {
         fn clone_creates_independent_copy() {
             let original = OllamaConfig::new().model("original").keep_alive("5m");
 
-            let cloned = original.clone();
+            let cloned = original;
 
             assert_eq!(cloned.model, "original");
             assert_eq!(cloned.keep_alive, Some("5m".to_owned()));

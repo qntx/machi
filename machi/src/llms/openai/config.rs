@@ -451,7 +451,7 @@ mod tests {
         #[test]
         fn debug_format_contains_fields() {
             let config = OpenAIConfig::new("test-key").with_model("gpt-4");
-            let debug_str = format!("{:?}", config);
+            let debug_str = format!("{config:?}");
 
             assert!(debug_str.contains("OpenAIConfig"));
             assert!(debug_str.contains("api_key"));

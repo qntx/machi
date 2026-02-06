@@ -452,7 +452,10 @@ mod tests {
         async fn session_with_tool_messages() {
             let session = InMemorySession::new("ec-1");
             let tool_msg = Message::tool("call-123", r#"{"result": 42}"#);
-            session.add_messages(&[tool_msg.clone()]).await.unwrap();
+            session
+                .add_messages(std::slice::from_ref(&tool_msg))
+                .await
+                .unwrap();
 
             let stored = session.get_messages(None).await.unwrap();
             assert_eq!(stored.len(), 1);

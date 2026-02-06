@@ -290,7 +290,7 @@ mod tests {
                 .unwrap()
                 .query_map([], |row| row.get(0))
                 .unwrap()
-                .filter_map(|r| r.ok())
+                .filter_map(std::result::Result::ok)
                 .collect();
             assert!(tables.contains(&"sessions".to_owned()));
             assert!(tables.contains(&"messages".to_owned()));
@@ -637,7 +637,10 @@ mod tests {
         async fn tool_messages_survive_roundtrip() {
             let session = new_session("ser-1");
             let tool_msg = Message::tool("call-123", r#"{"result": 42}"#);
-            session.add_messages(&[tool_msg.clone()]).await.unwrap();
+            session
+                .add_messages(std::slice::from_ref(&tool_msg))
+                .await
+                .unwrap();
 
             let stored = session.get_messages(None).await.unwrap();
             assert_eq!(stored.len(), 1);
@@ -653,7 +656,10 @@ mod tests {
                 "get_weather",
                 r#"{"city":"Tokyo"}"#,
             )]);
-            session.add_messages(&[msg.clone()]).await.unwrap();
+            session
+                .add_messages(std::slice::from_ref(&msg))
+                .await
+                .unwrap();
 
             let stored = session.get_messages(None).await.unwrap();
             assert_eq!(stored.len(), 1);
@@ -728,7 +734,10 @@ mod tests {
         async fn unicode_message_content() {
             let session = new_session("ec-4");
             let msg = Message::user("こんにちは世界 🌍 مرحبا");
-            session.add_messages(&[msg.clone()]).await.unwrap();
+            session
+                .add_messages(std::slice::from_ref(&msg))
+                .await
+                .unwrap();
 
             let stored = session.get_messages(None).await.unwrap();
             assert_eq!(stored[0], msg);

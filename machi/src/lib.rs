@@ -39,6 +39,7 @@
 
 pub mod agent;
 pub mod audio;
+pub mod callback;
 pub mod chat;
 pub mod embedding;
 pub mod error;

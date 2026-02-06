@@ -16,6 +16,10 @@ pub use crate::llms::{OpenAI, OpenAIConfig};
 #[cfg(feature = "derive")]
 pub use machi_derive::tool;
 
+pub use crate::callback::{
+    AgentHooks, BoxedAgentHooks, BoxedRunHooks, LoggingAgentHooks, LoggingRunHooks, NoopAgentHooks,
+    NoopRunHooks, RunContext, RunHooks, SharedAgentHooks, SharedRunHooks,
+};
 pub use crate::error::{Error, LlmError, Result, ToolError};
 
 pub use crate::agent::{Agent, AgentBuilder, AgentConfig, AgentMemory, RunResult, RunState};

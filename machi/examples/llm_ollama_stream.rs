@@ -20,10 +20,12 @@ async fn main() -> Result<()> {
     let mut stream = client.chat_stream(&request).await?;
 
     while let Some(chunk) = stream.next().await {
-        if let StreamChunk::Text(text) = chunk? {
-            print!("{text}");
-            stdout().flush()?;
+        match chunk? {
+            StreamChunk::ReasoningContent(text) => print!("\x1b[2m{text}\x1b[0m"),
+            StreamChunk::Text(text) => print!("{text}"),
+            _ => continue,
         }
+        stdout().flush()?;
     }
     println!();
 

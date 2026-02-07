@@ -466,7 +466,7 @@ fn extract_result_types(return_type: &ReturnType) -> (TokenStream2, TokenStream2
             // Handle ToolResult<T> - single generic parameter, error is always ToolError
             if ident == "ToolResult" && args.args.len() == 1 {
                 let output = args.args.first().expect("output type");
-                return (quote!(#output), quote!(::machi::tool::ToolError));
+                return (quote!(#output), quote!(::machi::ToolError));
             }
 
             // Handle Result<T, E> - two generic parameters
@@ -476,9 +476,9 @@ fn extract_result_types(return_type: &ReturnType) -> (TokenStream2, TokenStream2
                 return (quote!(#output), quote!(#error));
             }
         }
-        return (quote!(#ty), quote!(::machi::tool::ToolError));
+        return (quote!(#ty), quote!(::machi::ToolError));
     }
-    (quote!(()), quote!(::machi::tool::ToolError))
+    (quote!(()), quote!(::machi::ToolError))
 }
 
 /// Parameter information extracted from function signature.

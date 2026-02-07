@@ -840,7 +840,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "machi"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -865,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "machi-derive"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "async-trait",
  "convert_case",

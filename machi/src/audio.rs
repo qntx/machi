@@ -581,15 +581,6 @@ pub trait SpeechToTextProvider: Send + Sync {
     }
 }
 
-/// Combined trait for providers that support both TTS and STT.
-///
-/// This is a convenience trait for providers that implement both directions
-/// of audio-text conversion.
-pub trait AudioProvider: TextToSpeechProvider + SpeechToTextProvider {}
-
-// Blanket implementation for any type that implements both traits
-impl<T: TextToSpeechProvider + SpeechToTextProvider> AudioProvider for T {}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

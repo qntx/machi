@@ -11,17 +11,17 @@
 #[cfg(feature = "a2a")]
 pub use crate::a2a::{A2aAgent, A2aAgentBuilder};
 pub use crate::agent::{
-    Agent, AgentError, Instructions, NextStep, OutputSchema, RunConfig, RunEvent, RunResult,
-    Runner, StepInfo, ToolCallRecord, ToolCallRequest, UserInput,
+    Agent, AgentError, Instructions, OutputSchema, RunConfig, RunEvent, RunResult, Runner,
+    StepInfo, ToolCallRecord, UserInput,
 };
 pub use crate::audio::{
-    AudioFormat, AudioProvider, SpeechRequest, SpeechResponse, SpeechToTextProvider,
-    TextToSpeechProvider, TimestampGranularity, TranscriptionRequest, TranscriptionResponse,
-    TranscriptionResponseFormat, TranscriptionSegment, TranscriptionWord, Voice,
+    AudioFormat, SpeechRequest, SpeechResponse, SpeechToTextProvider, TextToSpeechProvider,
+    TimestampGranularity, TranscriptionRequest, TranscriptionResponse, TranscriptionResponseFormat,
+    TranscriptionSegment, TranscriptionWord, Voice,
 };
 pub use crate::callback::{
-    AgentHooks, BoxedAgentHooks, BoxedRunHooks, LoggingAgentHooks, LoggingRunHooks, NoopAgentHooks,
-    NoopRunHooks, RunContext, RunHooks, SharedAgentHooks, SharedRunHooks,
+    AgentHooks, BoxedAgentHooks, BoxedRunHooks, LogLevel, LoggingAgentHooks, LoggingRunHooks,
+    NoopAgentHooks, NoopRunHooks, RunContext, RunHooks, SharedAgentHooks, SharedRunHooks,
 };
 pub use crate::chat::{
     ChatProvider, ChatProviderExt, ChatRequest, ChatResponse, ResponseFormat, SharedChatProvider,
@@ -48,7 +48,7 @@ pub use crate::memory::SqliteSession;
 pub use crate::memory::{InMemorySession, MemoryError, Session, SharedSession};
 pub use crate::message::{
     Annotation, Content, ContentPart, FunctionCall, ImageDetail, ImageMime, InputAudio, Message,
-    MessageBuilder, Role, ThinkingBlock, ToolCall,
+    Role, ThinkingBlock, ToolCall,
 };
 pub use crate::stream::{StopReason, StreamAggregator, StreamChunk};
 pub use crate::tool::{
@@ -62,7 +62,7 @@ pub use crate::tools::{
     BingProvider, BraveProvider, DuckDuckGoProvider, EditFileTool, ExecTool, ListDirTool,
     ReadFileTool, SearchProvider, SearxngProvider, TavilyProvider, WebSearchTool, WriteFileTool,
 };
-pub use crate::usage::{CompletionTokensDetails, PromptTokensDetails, Usage};
+pub use crate::usage::Usage;
 #[cfg(feature = "wallet")]
 pub use crate::wallet::{EvmWallet, EvmWalletBuilder, WalletError};
 #[cfg(feature = "derive")]

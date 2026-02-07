@@ -55,7 +55,7 @@ mod managed;
 pub mod result;
 mod runner;
 
-pub use config::{Agent, Instructions};
+pub use config::{Agent, Instructions, OutputSchema};
 pub use managed::ManagedAgentTool;
 pub use result::{
     NextStep, RunConfig, RunEvent, RunResult, StepInfo, ToolCallRecord, ToolCallRequest, UserInput,

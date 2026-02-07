@@ -9,14 +9,15 @@ keywords = ["ai", "agent", "llm", "openai", "ollama"]
 categories = ["api-bindings", "asynchronous"]
 
 [features]
-default = ["openai", "ollama", "derive", "mcp", "toolkit"]
+default = ["full"]
 openai = []
 ollama = []
 derive = ["machi-derive"]
 mcp = ["rmcp"]
 toolkit = []
 memory-sqlite = ["dep:rusqlite"]
-full = ["openai", "ollama", "derive", "mcp", "toolkit", "memory-sqlite"]
+schema = ["dep:schemars"]
+full = ["openai", "ollama", "derive", "mcp", "toolkit", "memory-sqlite", "schema"]
 
 [dependencies]
 # Core dependencies
@@ -37,6 +38,7 @@ uuid.workspace = true
 machi-derive = { workspace = true, optional = true }
 rmcp = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
 
 # Template rendering
 minijinja.workspace = true

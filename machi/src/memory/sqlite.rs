@@ -121,7 +121,9 @@ impl Session for SqliteSession {
                      ORDER BY id DESC LIMIT ?2",
                 )?;
 
-                stmt.query_map(params![session_id, n], |row| row.get::<_, String>(0))?
+                #[allow(clippy::cast_possible_wrap)]
+                let limit = n as i64;
+                stmt.query_map(params![session_id, limit], |row| row.get::<_, String>(0))?
                     .map(|r| Ok(serde_json::from_str::<Message>(&r?)?))
                     .collect::<std::result::Result<Vec<_>, MemoryError>>()?
             } else {

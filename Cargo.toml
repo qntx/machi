@@ -31,7 +31,8 @@ proc-macro2 = "1.0"
 quote = "1.0"
 regex = "1.11"
 reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }
-rusqlite = { version = "0.35", features = ["bundled"] }
+rusqlite = { version = "0.38.0", features = ["bundled"] }
+schemars = "1.0"
 rmcp = { version = "0.14", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 scraper = "0.25.0"
 serde = { version = "1.0", features = ["derive"] }

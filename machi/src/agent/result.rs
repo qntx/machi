@@ -189,6 +189,26 @@ impl RunResult {
     pub fn text(&self) -> Option<&str> {
         self.output.as_str()
     }
+
+    /// Deserialize the output into a concrete Rust type.
+    ///
+    /// This is the companion to [`Agent::output_type`](super::Agent::output_type)
+    /// and [`Agent::output_schema`](super::Agent::output_schema). When the agent
+    /// produces structured JSON output, this method deserializes it into `T`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`serde_json::Error`] if the output cannot be deserialized into `T`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let result = agent.run("Tell me about France", config).await?;
+    /// let country: Country = result.parse()?;
+    /// ```
+    pub fn parse<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
+        serde_json::from_value(self.output.clone())
+    }
 }
 
 /// Metadata about a single reasoning step in the agent loop.

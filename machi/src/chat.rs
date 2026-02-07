@@ -300,6 +300,39 @@ impl ChatRequest {
         self
     }
 
+    /// Sets structured output by inferring the JSON Schema from a Rust type.
+    ///
+    /// This is the most ergonomic way to request structured JSON output from
+    /// the LLM. The type must derive [`schemars::JsonSchema`].
+    ///
+    /// The response can be deserialized with [`ChatResponse::parse`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use schemars::JsonSchema;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize, JsonSchema)]
+    /// struct Country {
+    ///     name: String,
+    ///     capital: String,
+    ///     population: u64,
+    /// }
+    ///
+    /// let request = ChatRequest::new("gpt-4o")
+    ///     .user("Tell me about France.")
+    ///     .output_type::<Country>();
+    ///
+    /// let response = provider.chat(&request).await?;
+    /// let country: Country = response.parse()?;
+    /// ```
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn output_type<T: schemars::JsonSchema>(self) -> Self {
+        self.response_format(ResponseFormat::from_type::<T>())
+    }
+
     /// Sets seed for reproducibility.
     #[must_use]
     pub const fn seed(mut self, seed: i64) -> Self {
@@ -424,6 +457,36 @@ impl ResponseFormat {
             },
         }
     }
+
+    /// Creates a JSON schema format by auto-generating the schema from a Rust type.
+    ///
+    /// The type must derive [`schemars::JsonSchema`]. The schema name is
+    /// derived from the type name automatically.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use schemars::JsonSchema;
+    ///
+    /// #[derive(JsonSchema)]
+    /// struct Country { name: String, capital: String }
+    ///
+    /// let format = ResponseFormat::from_type::<Country>();
+    /// ```
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn from_type<T: schemars::JsonSchema>() -> Self {
+        let root = schemars::schema_for!(T);
+        let mut schema_value = serde_json::to_value(&root).unwrap_or_default();
+
+        // Remove the $schema meta field — LLM APIs don't need it.
+        if let Value::Object(ref mut map) = schema_value {
+            map.remove("$schema");
+        }
+
+        let name = <T as schemars::JsonSchema>::schema_name();
+        Self::json_schema(name.into_owned(), schema_value)
+    }
 }
 
 /// JSON schema specification for structured outputs.
@@ -528,6 +591,28 @@ impl ChatResponse {
     #[must_use]
     pub fn text(&self) -> Option<String> {
         self.message.text()
+    }
+
+    /// Deserialize the response text into a concrete Rust type.
+    ///
+    /// This is the companion to [`ChatRequest::output_type`] and
+    /// [`ChatRequest::response_format`]. When the LLM produces structured
+    /// JSON output, this method parses the text content directly into `T`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`serde_json::Error`] if the response has no text content
+    /// or if the text cannot be deserialized into `T`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let response = provider.chat(&request).await?;
+    /// let country: Country = response.parse()?;
+    /// ```
+    pub fn parse<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
+        let text = self.text().unwrap_or_default();
+        serde_json::from_str(&text)
     }
 
     /// Returns `true` if the response contains tool calls.

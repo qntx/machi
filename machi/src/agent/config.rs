@@ -31,12 +31,173 @@ use std::sync::Arc;
 
 use futures::stream::Stream;
 
+use serde_json::Value;
+
 use crate::callback::SharedAgentHooks;
-use crate::chat::SharedChatProvider;
+use crate::chat::{ResponseFormat, SharedChatProvider};
 use crate::error::Result;
 use crate::tool::{BoxedTool, ToolDefinition, ToolExecutionPolicy};
 
 use super::result::{RunConfig, RunEvent, RunResult, UserInput};
+
+/// Schema specification for structured agent output.
+///
+/// When set on an [`Agent`], the [`Runner`](super::Runner) will:
+///
+/// 1. Set `response_format` to [`ResponseFormat::JsonSchema`](crate::chat::ResponseFormat::JsonSchema)
+///    on every LLM request, constraining the model to produce valid JSON.
+/// 2. Parse the LLM's text output as a JSON [`Value`](serde_json::Value) for the
+///    final result in [`RunResult::output`](super::RunResult).
+///
+/// The caller can then deserialize the output into a concrete Rust type
+/// using [`serde_json::from_value::<T>(result.output)`](serde_json::from_value).
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use machi::prelude::*;
+/// use serde::Deserialize;
+/// use serde_json::json;
+///
+/// #[derive(Deserialize)]
+/// struct Country {
+///     name: String,
+///     capital: String,
+///     population: u64,
+/// }
+///
+/// let schema = OutputSchema::new("country", json!({
+///     "type": "object",
+///     "properties": {
+///         "name": { "type": "string" },
+///         "capital": { "type": "string" },
+///         "population": { "type": "integer" }
+///     },
+///     "required": ["name", "capital", "population"],
+///     "additionalProperties": false
+/// }));
+///
+/// let agent = Agent::new("geo")
+///     .instructions("You provide country facts as structured JSON.")
+///     .model("gpt-4o")
+///     .provider(provider.clone())
+///     .output_schema(schema);
+///
+/// let result = agent.run("Tell me about France", RunConfig::default()).await?;
+/// let country: Country = serde_json::from_value(result.output)?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct OutputSchema {
+    /// Schema name (used in the `response_format` API parameter).
+    name: String,
+    /// JSON Schema definition.
+    schema: Value,
+    /// Whether to enforce strict JSON schema validation (recommended).
+    strict: bool,
+}
+
+impl OutputSchema {
+    /// Creates a new output schema with strict mode enabled (recommended).
+    ///
+    /// Strict mode constrains the JSON schema features but guarantees that
+    /// the model produces valid JSON conforming to the schema.
+    #[must_use]
+    pub fn new(name: impl Into<String>, schema: Value) -> Self {
+        Self {
+            name: name.into(),
+            schema,
+            strict: true,
+        }
+    }
+
+    /// Creates a new output schema with strict mode explicitly set.
+    #[must_use]
+    pub fn with_strict(name: impl Into<String>, schema: Value, strict: bool) -> Self {
+        Self {
+            name: name.into(),
+            schema,
+            strict,
+        }
+    }
+
+    /// Returns the schema name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the JSON Schema definition.
+    #[must_use]
+    pub const fn schema(&self) -> &Value {
+        &self.schema
+    }
+
+    /// Returns whether strict mode is enabled.
+    #[must_use]
+    pub const fn is_strict(&self) -> bool {
+        self.strict
+    }
+
+    /// Converts this into a [`ResponseFormat`] for use in [`ChatRequest`](crate::chat::ChatRequest).
+    #[must_use]
+    pub fn to_response_format(&self) -> ResponseFormat {
+        if self.strict {
+            ResponseFormat::json_schema(&self.name, self.schema.clone())
+        } else {
+            ResponseFormat::JsonSchema {
+                json_schema: crate::chat::JsonSchemaSpec {
+                    name: self.name.clone(),
+                    schema: self.schema.clone(),
+                    strict: Some(false),
+                },
+            }
+        }
+    }
+
+    /// Creates an output schema by auto-generating JSON Schema from a Rust type.
+    ///
+    /// This is the most ergonomic way to create an [`OutputSchema`]. The type
+    /// must derive [`schemars::JsonSchema`], which auto-generates the JSON
+    /// Schema definition at compile time.
+    ///
+    /// The schema name is derived from the type name automatically.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use machi::prelude::*;
+    /// use schemars::JsonSchema;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize, JsonSchema)]
+    /// struct Country {
+    ///     name: String,
+    ///     capital: String,
+    ///     population: u64,
+    /// }
+    ///
+    /// let schema = OutputSchema::from_type::<Country>();
+    /// ```
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn from_type<T: schemars::JsonSchema>() -> Self {
+        let root = schemars::schema_for!(T);
+        let mut schema_value = serde_json::to_value(&root).unwrap_or_default();
+
+        // Remove the $schema meta field — LLM APIs don't need it.
+        if let Value::Object(ref mut map) = schema_value {
+            map.remove("$schema");
+        }
+
+        let name = <T as schemars::JsonSchema>::schema_name();
+
+        Self {
+            name: name.into_owned(),
+            schema: schema_value,
+            strict: true,
+        }
+    }
+}
 
 /// Instructions that guide the agent's behavior.
 ///
@@ -136,6 +297,13 @@ pub struct Agent {
     ///
     /// Tools not listed here default to [`ToolExecutionPolicy::Auto`].
     pub tool_policies: HashMap<String, ToolExecutionPolicy>,
+
+    /// Optional schema for structured JSON output.
+    ///
+    /// When set, the Runner constrains LLM responses to produce valid JSON
+    /// conforming to this schema, and parses the text output as a JSON
+    /// [`Value`](serde_json::Value) in [`RunResult::output`](super::RunResult).
+    pub output_schema: Option<OutputSchema>,
 }
 
 impl fmt::Debug for Agent {
@@ -161,6 +329,10 @@ impl fmt::Debug for Agent {
             .field("max_steps", &self.max_steps)
             .field("description", &self.description)
             .field("tool_policies", &self.tool_policies)
+            .field(
+                "output_schema",
+                &self.output_schema.as_ref().map(OutputSchema::name),
+            )
             .finish()
     }
 }
@@ -184,6 +356,7 @@ impl Agent {
             hooks: None,
             max_steps: Self::DEFAULT_MAX_STEPS,
             tool_policies: HashMap::new(),
+            output_schema: None,
         }
     }
 
@@ -272,6 +445,52 @@ impl Agent {
     pub fn tool_policy(mut self, name: impl Into<String>, policy: ToolExecutionPolicy) -> Self {
         self.tool_policies.insert(name.into(), policy);
         self
+    }
+
+    /// Set the output schema for structured JSON output.
+    ///
+    /// When set, the LLM is constrained to produce JSON conforming to this
+    /// schema, and the final output is parsed as a JSON [`Value`].
+    #[must_use]
+    pub fn output_schema(mut self, schema: OutputSchema) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Set structured output by inferring the JSON Schema from a Rust type.
+    ///
+    /// This is the most ergonomic way to enable structured output. The type
+    /// must derive [`schemars::JsonSchema`] and [`serde::Deserialize`].
+    ///
+    /// The generated output can be deserialized with [`RunResult::parse`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use machi::prelude::*;
+    /// use schemars::JsonSchema;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize, JsonSchema)]
+    /// struct Country {
+    ///     name: String,
+    ///     capital: String,
+    ///     population: u64,
+    /// }
+    ///
+    /// let agent = Agent::new("geo")
+    ///     .instructions("You provide country facts as structured JSON.")
+    ///     .model("gpt-4o")
+    ///     .provider(provider.clone())
+    ///     .output_type::<Country>();
+    ///
+    /// let result = agent.run("Tell me about France", RunConfig::default()).await?;
+    /// let country: Country = result.parse()?;
+    /// ```
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn output_type<T: schemars::JsonSchema>(self) -> Self {
+        self.output_schema(OutputSchema::from_type::<T>())
     }
 
     /// Resolve the system instructions for this agent.

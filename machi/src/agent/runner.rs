@@ -145,7 +145,8 @@ impl Runner {
                 context.add_usage(usage);
             }
 
-            let next_step = Self::classify_response(&response);
+            let structured = agent.output_schema.is_some();
+            let next_step = Self::classify_response(&response, structured);
             let (next_step, forbidden) = Self::apply_policies(next_step, agent, &auto_approved);
 
             match next_step {
@@ -286,6 +287,10 @@ impl Runner {
                 .tool_choice(ToolChoice::Auto)
                 .parallel_tool_calls(true);
         }
+        // Apply structured output schema when configured on the agent.
+        if let Some(ref schema) = agent.output_schema {
+            request = request.response_format(schema.to_response_format());
+        }
         request
     }
 
@@ -301,7 +306,11 @@ impl Runner {
     }
 
     /// Classify an LLM response into a [`NextStep`].
-    fn classify_response(response: &ChatResponse) -> NextStep {
+    ///
+    /// When `structured_output` is `true`, the text content is parsed as JSON
+    /// so that [`RunResult::output`] contains a structured [`Value`] rather
+    /// than a plain string.
+    fn classify_response(response: &ChatResponse, structured_output: bool) -> NextStep {
         if let Some(tool_calls) = response.tool_calls() {
             let calls: Vec<ToolCallRequest> =
                 tool_calls.iter().map(ToolCallRequest::from).collect();
@@ -309,9 +318,15 @@ impl Runner {
                 return NextStep::ToolCalls { calls };
             }
         }
-        NextStep::FinalOutput {
-            output: response.text().map_or(Value::Null, Value::String),
-        }
+        let output = if structured_output {
+            // Parse the LLM's text as JSON for structured output.
+            response.text().map_or(Value::Null, |text| {
+                serde_json::from_str(&text).unwrap_or(Value::String(text))
+            })
+        } else {
+            response.text().map_or(Value::Null, Value::String)
+        };
+        NextStep::FinalOutput { output }
     }
 
     /// Execute tool calls concurrently and append results to messages.
@@ -635,7 +650,8 @@ impl Runner {
                     context.add_usage(usage);
                 }
 
-                let next_step = Self::classify_response(&response);
+                let structured = agent.output_schema.is_some();
+                let next_step = Self::classify_response(&response, structured);
                 let (next_step, forbidden) = Self::apply_policies(next_step, agent, &auto_approved);
 
                 match next_step {

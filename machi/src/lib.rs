@@ -3,6 +3,8 @@
 //! This crate provides a lightweight, ergonomic framework for building AI agents
 //! that can use tools and interact with language models.
 
+#[cfg(feature = "a2a")]
+pub mod a2a;
 pub mod agent;
 pub mod audio;
 pub mod callback;

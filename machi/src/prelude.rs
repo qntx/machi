@@ -59,6 +59,9 @@ pub use crate::tool::{
 };
 pub use crate::usage::{CompletionTokensDetails, PromptTokensDetails, Usage, UsageTracker};
 
+#[cfg(feature = "a2a")]
+pub use crate::a2a::{A2aAgent, A2aAgentBuilder};
+
 #[cfg(feature = "mcp")]
 pub use crate::mcp::{HttpBuilder, McpServer, StdioBuilder};
 

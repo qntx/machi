@@ -13,11 +13,12 @@ default = ["full"]
 openai = []
 ollama = []
 derive = ["machi-derive"]
+a2a = ["ra2a"]
 mcp = ["rmcp"]
 toolkit = []
 memory-sqlite = ["dep:rusqlite"]
 schema = ["dep:schemars"]
-full = ["openai", "ollama", "derive", "mcp", "toolkit", "memory-sqlite", "schema"]
+full = ["openai", "ollama", "derive", "a2a", "mcp", "toolkit", "memory-sqlite", "schema"]
 
 [dependencies]
 # Core dependencies
@@ -37,6 +38,7 @@ uuid.workspace = true
 
 # Optional dependencies
 machi-derive = { workspace = true, optional = true }
+ra2a = { workspace = true, optional = true }
 rmcp = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }

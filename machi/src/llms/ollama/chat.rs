@@ -6,6 +6,8 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 
+use tracing::{Instrument, debug, error, info, info_span};
+
 use crate::chat::ChatProvider;
 use crate::chat::{ChatRequest, ChatResponse};
 use crate::error::{LlmError, Result};
@@ -104,33 +106,84 @@ impl Ollama {
 #[async_trait]
 impl ChatProvider for Ollama {
     async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse> {
-        let url = self.chat_url();
-        let mut body = self.build_body(request).await?;
-        body.stream = false;
+        let span = info_span!(
+            "gen_ai.chat",
+            gen_ai.system = "ollama",
+            gen_ai.request.model = %request.model,
+            gen_ai.request.temperature = request.temperature.unwrap_or(-1.0),
+            gen_ai.request.max_tokens = request.max_completion_tokens.or(request.max_tokens).unwrap_or(0),
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.response.model = tracing::field::Empty,
+            gen_ai.response.finish_reason = tracing::field::Empty,
+            error = tracing::field::Empty,
+        );
 
-        let response = self.client().post(&url).json(&body).send().await?;
+        async {
+            let url = self.chat_url();
+            let mut body = self.build_body(request).await?;
+            body.stream = false;
 
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(Self::parse_error(status.as_u16(), &error_text).into());
+            debug!(model = %request.model, messages = request.messages.len(), "Sending Ollama chat request");
+
+            let response = self.client().post(&url).json(&body).send().await?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let error_text = response.text().await.unwrap_or_default();
+                let err = Self::parse_error(status.as_u16(), &error_text);
+                error!(error = %err, status = status.as_u16(), "Ollama API error");
+                tracing::Span::current().record("error", tracing::field::display(&err));
+                return Err(err.into());
+            }
+
+            let response_text = response.text().await?;
+            let parsed: OllamaChatResponse = serde_json::from_str(&response_text).map_err(|e| {
+                let err = LlmError::response_format(
+                    "valid Ollama response",
+                    format!("parse error: {e}, response: {response_text}"),
+                );
+                error!(error = %err, "Ollama response parse error");
+                tracing::Span::current().record("error", tracing::field::display(&err));
+                err
+            })?;
+
+            let result = Self::parse_response(parsed);
+
+            // Record usage, model, and finish_reason in the span.
+            let current = tracing::Span::current();
+            if let Some(ref usage) = result.usage {
+                current.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                current.record("gen_ai.usage.output_tokens", usage.output_tokens);
+            }
+            if let Some(ref model) = result.model {
+                current.record("gen_ai.response.model", model.as_str());
+            }
+            current.record("gen_ai.response.finish_reason", result.stop_reason.as_str());
+
+            info!(
+                model = result.model.as_deref().unwrap_or(&request.model),
+                finish_reason = result.stop_reason.as_str(),
+                "Ollama chat completed",
+            );
+
+            Ok(result)
         }
-
-        let response_text = response.text().await?;
-        let parsed: OllamaChatResponse = serde_json::from_str(&response_text).map_err(|e| {
-            LlmError::response_format(
-                "valid Ollama response",
-                format!("parse error: {e}, response: {response_text}"),
-            )
-        })?;
-
-        Ok(Self::parse_response(parsed))
+        .instrument(span)
+        .await
     }
 
     async fn chat_stream(
         &self,
         request: &ChatRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
+        debug!(
+            gen_ai.system = "ollama",
+            model = %request.model,
+            messages = request.messages.len(),
+            "Starting Ollama chat stream",
+        );
+
         let url = self.chat_url();
         let mut body = self.build_body(request).await?;
         body.stream = true;

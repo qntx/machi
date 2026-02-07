@@ -24,7 +24,7 @@ use std::pin::Pin;
 use futures::StreamExt as _;
 use futures::stream::Stream;
 use serde_json::Value;
-use tracing::{debug, warn};
+use tracing::{Instrument, debug, error, info, info_span, warn};
 
 use crate::callback::{NoopRunHooks, RunContext, RunHooks};
 use crate::chat::{ChatRequest, ChatResponse, ToolChoice};
@@ -79,7 +79,17 @@ impl Runner {
         config: RunConfig,
     ) -> Pin<Box<dyn Future<Output = Result<RunResult>> + Send + 'a>> {
         let input = input.into();
-        Box::pin(Self::run_inner(agent, input, config))
+        let span = info_span!(
+            "agent",
+            agent.name = %agent.name,
+            agent.model = %agent.model,
+            gen_ai.system = "machi",
+            agent.max_steps = agent.max_steps,
+            agent.tools = tracing::field::Empty,
+            agent.result_steps = tracing::field::Empty,
+            error = tracing::field::Empty,
+        );
+        Box::pin(Self::run_inner(agent, input, config).instrument(span))
     }
 
     /// Internal async implementation of the agent run loop.
@@ -123,6 +133,10 @@ impl Runner {
         // Collect tool definitions: regular tools + managed agent tool stubs.
         let all_definitions = Self::collect_all_definitions(agent);
 
+        // Record tool names in the agent span.
+        let tool_names: Vec<&str> = all_definitions.iter().map(ToolDefinition::name).collect();
+        tracing::Span::current().record("agent.tools", tracing::field::debug(&tool_names));
+
         hooks.agent_start(&context).await;
 
         let system_ref = (!system_prompt.is_empty()).then_some(system_prompt.as_str());
@@ -135,7 +149,11 @@ impl Runner {
 
             hooks.llm_start(&context, system_ref, &messages).await;
 
-            let response = provider.chat(&request).await?;
+            let response = provider.chat(&request).await.map_err(|e| {
+                error!(error = %e, agent = %agent.name, step, "LLM call failed");
+                tracing::Span::current().record("error", tracing::field::display(&e));
+                e
+            })?;
 
             hooks.llm_end(&context, &response).await;
 
@@ -168,6 +186,15 @@ impl Runner {
                         let to_save = vec![user_message, response.message.clone()];
                         let _ = session.add_messages(&to_save).await;
                     }
+
+                    tracing::Span::current().record("agent.result_steps", step);
+                    info!(
+                        agent = %agent.name,
+                        steps = step,
+                        input_tokens = cumulative_usage.input_tokens,
+                        output_tokens = cumulative_usage.output_tokens,
+                        "Agent run completed",
+                    );
 
                     return Ok(RunResult {
                         output: output_value,
@@ -259,6 +286,8 @@ impl Runner {
 
         // Exceeded max steps.
         let err = Error::max_steps(max_steps);
+        error!(error = %err, agent = %agent.name, max_steps, "Max steps exceeded");
+        tracing::Span::current().record("error", tracing::field::display(&err));
         hooks.error(&context, &err).await;
 
         Err(err)
@@ -371,32 +400,57 @@ impl Runner {
         context: &RunContext,
         hooks: &HookPair<'_>,
     ) -> ToolCallRecord {
-        hooks.tool_start(context, &call.name).await;
+        let tool_span = info_span!(
+            "tool",
+            tool.name = %call.name,
+            tool.id = %call.id,
+            tool.input = %call.arguments,
+            tool.output = tracing::field::Empty,
+            tool.success = tracing::field::Empty,
+            error = tracing::field::Empty,
+        );
 
-        let (result_str, success) =
-            if let Some(sub) = agent.managed_agents.iter().find(|a| a.name == call.name) {
-                Self::dispatch_managed_agent(sub, &call.arguments).await
-            } else if let Some(tool) = agent.tools.iter().find(|t| t.name() == call.name) {
-                Self::dispatch_tool(tool, call).await
-            } else {
-                warn!(tool = %call.name, "Tool not found");
-                (format!("Tool '{}' not found", call.name), false)
-            };
+        async {
+            hooks.tool_start(context, &call.name).await;
 
-        hooks.tool_end(context, &call.name, &result_str).await;
+            let (result_str, success) =
+                if let Some(sub) = agent.managed_agents.iter().find(|a| a.name == call.name) {
+                    Self::dispatch_managed_agent(sub, &call.arguments).await
+                } else if let Some(tool) = agent.tools.iter().find(|t| t.name() == call.name) {
+                    Self::dispatch_tool(tool, call).await
+                } else {
+                    warn!(tool = %call.name, "Tool not found");
+                    (format!("Tool '{}' not found", call.name), false)
+                };
 
-        ToolCallRecord {
-            id: call.id.clone(),
-            name: call.name.clone(),
-            arguments: call.arguments.clone(),
-            result: result_str,
-            success,
+            let current = tracing::Span::current();
+            current.record("tool.success", success);
+            current.record("tool.output", result_str.as_str());
+            if !success {
+                current.record("error", result_str.as_str());
+            }
+            hooks.tool_end(context, &call.name, &result_str).await;
+
+            ToolCallRecord {
+                id: call.id.clone(),
+                name: call.name.clone(),
+                arguments: call.arguments.clone(),
+                result: result_str,
+                success,
+            }
         }
+        .instrument(tool_span)
+        .await
     }
 
     /// Run a managed sub-agent with the given task arguments.
     async fn dispatch_managed_agent(sub_agent: &Agent, args: &Value) -> (String, bool) {
         let task = args.get("task").and_then(Value::as_str).unwrap_or_default();
+        info!(
+            from_agent = tracing::field::Empty,
+            to_agent = %sub_agent.name,
+            "Handoff to managed agent",
+        );
         match Self::run(sub_agent, task, RunConfig::default()).await {
             Ok(result) => {
                 let output = serde_json::to_string(&result.output)
@@ -590,6 +644,15 @@ impl Runner {
             }
 
             let all_definitions = Self::collect_all_definitions(agent);
+            let tool_names: Vec<&str> = all_definitions.iter().map(ToolDefinition::name).collect();
+
+            info!(
+                agent = %agent.name,
+                model = %agent.model,
+                tools = ?tool_names,
+                gen_ai.system = "machi",
+                "Agent streamed run started",
+            );
 
             hooks.agent_start(&context).await;
             yield RunEvent::RunStarted { agent_name: agent.name.clone() };
@@ -676,6 +739,15 @@ impl Runner {
                             let to_save = vec![user_message, response.message.clone()];
                             let _ = session.add_messages(&to_save).await;
                         }
+
+                        tracing::Span::current().record("agent.result_steps", step);
+                        info!(
+                            agent = %agent.name,
+                            steps = step,
+                            input_tokens = cumulative_usage.input_tokens,
+                            output_tokens = cumulative_usage.output_tokens,
+                            "Agent streamed run completed",
+                        );
 
                         yield RunEvent::RunCompleted {
                             result: Box::new(RunResult {
@@ -786,6 +858,7 @@ impl Runner {
 
             // Exceeded max steps.
             let err = Error::max_steps(max_steps);
+            error!(error = %err, agent = %agent.name, max_steps, "Streamed max steps exceeded");
             hooks.error(&context, &err).await;
             Err(err)?;
         }

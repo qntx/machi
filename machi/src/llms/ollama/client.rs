@@ -105,7 +105,7 @@ struct OllamaErrorResponse {
 #[derive(Debug, Clone)]
 pub struct Ollama {
     pub(crate) config: Arc<OllamaConfig>,
-    pub(crate) http_client: Client,
+    pub(crate) client: Client,
 }
 
 impl Ollama {
@@ -116,13 +116,13 @@ impl Ollama {
             builder = builder.timeout(Duration::from_secs(timeout));
         }
 
-        let http_client = builder
+        let client = builder
             .build()
             .map_err(|e| LlmError::internal(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             config: Arc::new(config),
-            http_client,
+            client,
         })
     }
 
@@ -151,7 +151,7 @@ impl Ollama {
     /// Get a reference to the HTTP client.
     #[must_use]
     pub(crate) const fn client(&self) -> &Client {
-        &self.http_client
+        &self.client
     }
 
     /// Build the chat API URL.
@@ -279,7 +279,7 @@ impl Ollama {
     pub(crate) async fn build_body(&self, request: &ChatRequest) -> Result<OllamaChatRequest> {
         let mut messages = Vec::with_capacity(request.messages.len());
         for msg in &request.messages {
-            let converted = Self::convert_message_async(&self.http_client, msg).await?;
+            let converted = Self::convert_message_async(&self.client, msg).await?;
             messages.push(converted);
         }
 

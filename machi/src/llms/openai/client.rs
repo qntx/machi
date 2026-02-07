@@ -424,13 +424,45 @@ impl OpenAI {
             return match status {
                 401 => LlmError::auth("openai", error.message),
                 429 => LlmError::rate_limited("openai"),
-                400 if error.message.contains("context_length") => LlmError::context_exceeded(0, 0),
+                400 if error.message.contains("context_length") => {
+                    // Attempt to extract token counts from the error message.
+                    let (used, max) = parse_context_length_tokens(&error.message);
+                    LlmError::context_exceeded(used, max)
+                }
                 _ => LlmError::provider_code("openai", code, error.message),
             };
         }
 
         LlmError::http_status(status, body.to_owned())
     }
+}
+
+/// Extract token counts from an OpenAI context-length error message.
+///
+/// OpenAI error messages typically look like:
+/// "This model's maximum context length is 8192 tokens. However, your messages resulted in 9500 tokens."
+/// Returns `(used, max)`, defaulting to `(0, 0)` if parsing fails.
+fn parse_context_length_tokens(message: &str) -> (usize, usize) {
+    let mut max = 0usize;
+    let mut used = 0usize;
+
+    // Look for "maximum context length is <N> tokens"
+    if let Some(pos) = message.find("maximum context length is ") {
+        let after = &message[pos + "maximum context length is ".len()..];
+        if let Some(end) = after.find(|c: char| !c.is_ascii_digit()) {
+            max = after[..end].parse().unwrap_or(0);
+        }
+    }
+
+    // Look for "resulted in <N> tokens" or "your messages resulted in <N> tokens"
+    if let Some(pos) = message.find("resulted in ") {
+        let after = &message[pos + "resulted in ".len()..];
+        if let Some(end) = after.find(|c: char| !c.is_ascii_digit()) {
+            used = after[..end].parse().unwrap_or(0);
+        }
+    }
+
+    (used, max)
 }
 
 #[cfg(test)]
@@ -464,14 +496,14 @@ mod tests {
 
         #[test]
         fn base_url_returns_configured_url() {
-            let config = OpenAIConfig::new("key").with_base_url("https://custom.api.com/v1");
+            let config = OpenAIConfig::new("key").base_url("https://custom.api.com/v1");
             let client = OpenAI::new(config).unwrap();
             assert_eq!(client.base_url(), "https://custom.api.com/v1");
         }
 
         #[test]
         fn model_returns_configured_model() {
-            let config = OpenAIConfig::new("key").with_model("gpt-4-turbo");
+            let config = OpenAIConfig::new("key").model("gpt-4-turbo");
             let client = OpenAI::new(config).unwrap();
             assert_eq!(client.model(), "gpt-4-turbo");
         }
@@ -514,7 +546,7 @@ mod tests {
 
         #[test]
         fn custom_base_url_affects_all_endpoints() {
-            let config = OpenAIConfig::new("key").with_base_url("https://azure.openai.com");
+            let config = OpenAIConfig::new("key").base_url("https://azure.openai.com");
             let client = OpenAI::new(config).unwrap();
             assert!(client.chat_url().starts_with("https://azure.openai.com"));
             assert!(
@@ -734,7 +766,7 @@ mod tests {
 
         #[test]
         fn falls_back_to_config_model_when_empty() {
-            let config = OpenAIConfig::new("key").with_model("gpt-4o-mini");
+            let config = OpenAIConfig::new("key").model("gpt-4o-mini");
             let client = OpenAI::new(config).unwrap();
             let request = ChatRequest::new("").user("Hi");
             let body = client.build_body(&request);
@@ -1028,6 +1060,49 @@ mod tests {
             // Should use type as fallback for code
             let msg = error.to_string();
             assert!(msg.contains("Error message") || msg.contains("error_type"));
+        }
+    }
+
+    mod parse_context_length {
+        use super::*;
+
+        #[test]
+        fn extracts_both_token_counts() {
+            let msg = "This model's maximum context length is 8192 tokens. However, your messages resulted in 9500 tokens.";
+            let (used, max) = parse_context_length_tokens(msg);
+            assert_eq!(max, 8192);
+            assert_eq!(used, 9500);
+        }
+
+        #[test]
+        fn extracts_large_token_counts() {
+            let msg = "This model's maximum context length is 128000 tokens. However, your messages resulted in 200000 tokens.";
+            let (used, max) = parse_context_length_tokens(msg);
+            assert_eq!(max, 128000);
+            assert_eq!(used, 200000);
+        }
+
+        #[test]
+        fn returns_zeros_for_unparseable_message() {
+            let msg = "context_length exceeded but no numbers here";
+            let (used, max) = parse_context_length_tokens(msg);
+            assert_eq!(max, 0);
+            assert_eq!(used, 0);
+        }
+
+        #[test]
+        fn returns_partial_when_only_max_found() {
+            let msg = "This model's maximum context length is 4096 tokens.";
+            let (used, max) = parse_context_length_tokens(msg);
+            assert_eq!(max, 4096);
+            assert_eq!(used, 0);
+        }
+
+        #[test]
+        fn handles_empty_string() {
+            let (used, max) = parse_context_length_tokens("");
+            assert_eq!(max, 0);
+            assert_eq!(used, 0);
         }
     }
 

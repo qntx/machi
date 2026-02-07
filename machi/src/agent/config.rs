@@ -182,18 +182,9 @@ impl OutputSchema {
     #[cfg(feature = "schema")]
     #[must_use]
     pub fn from_type<T: schemars::JsonSchema>() -> Self {
-        let root = schemars::schema_for!(T);
-        let mut schema_value = serde_json::to_value(&root).unwrap_or_default();
-
-        // Remove the $schema meta field — LLM APIs don't need it.
-        if let Value::Object(ref mut map) = schema_value {
-            map.remove("$schema");
-        }
-
-        let name = <T as schemars::JsonSchema>::schema_name();
-
+        let (name, schema_value) = crate::chat::generate_json_schema::<T>();
         Self {
-            name: name.into_owned(),
+            name,
             schema: schema_value,
             strict: true,
         }

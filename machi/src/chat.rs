@@ -476,17 +476,32 @@ impl ResponseFormat {
     #[cfg(feature = "schema")]
     #[must_use]
     pub fn from_type<T: schemars::JsonSchema>() -> Self {
-        let root = schemars::schema_for!(T);
-        let mut schema_value = serde_json::to_value(&root).unwrap_or_default();
-
-        // Remove the $schema meta field — LLM APIs don't need it.
-        if let Value::Object(ref mut map) = schema_value {
-            map.remove("$schema");
-        }
-
-        let name = <T as schemars::JsonSchema>::schema_name();
-        Self::json_schema(name.into_owned(), schema_value)
+        let (name, schema_value) = generate_json_schema::<T>();
+        Self::json_schema(name, schema_value)
     }
+}
+
+/// Generate a JSON Schema from a Rust type that implements [`schemars::JsonSchema`].
+///
+/// Returns `(name, schema)` where `name` is derived from the type name and
+/// `schema` is the JSON Schema definition with the `$schema` meta field removed
+/// (LLM APIs don't need it).
+///
+/// This is the single source of truth for schema generation, used by both
+/// [`ResponseFormat::from_type`] and [`OutputSchema::from_type`](crate::agent::OutputSchema::from_type).
+#[cfg(feature = "schema")]
+#[must_use]
+pub fn generate_json_schema<T: schemars::JsonSchema>() -> (String, Value) {
+    let root = schemars::schema_for!(T);
+    let mut schema_value = serde_json::to_value(&root).unwrap_or_default();
+
+    // Remove the $schema meta field — LLM APIs don't need it.
+    if let Value::Object(ref mut map) = schema_value {
+        map.remove("$schema");
+    }
+
+    let name = <T as schemars::JsonSchema>::schema_name();
+    (name.into_owned(), schema_value)
 }
 
 /// JSON schema specification for structured outputs.

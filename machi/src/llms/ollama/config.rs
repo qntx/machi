@@ -27,7 +27,7 @@ impl OllamaConfig {
 
     /// Creates configuration with a specific model.
     #[must_use]
-    pub fn with_model(model: impl Into<String>) -> Self {
+    pub fn for_model(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
             ..Default::default()
@@ -160,31 +160,31 @@ mod tests {
 
         #[test]
         fn with_model_sets_model() {
-            let config = OllamaConfig::with_model("llama3");
+            let config = OllamaConfig::for_model("llama3");
             assert_eq!(config.model, "llama3");
         }
 
         #[test]
         fn with_model_uses_default_base_url() {
-            let config = OllamaConfig::with_model("llama3");
+            let config = OllamaConfig::for_model("llama3");
             assert_eq!(config.base_url, OllamaConfig::DEFAULT_BASE_URL);
         }
 
         #[test]
         fn with_model_uses_default_timeout() {
-            let config = OllamaConfig::with_model("llama3");
+            let config = OllamaConfig::for_model("llama3");
             assert_eq!(config.timeout_secs, Some(300));
         }
 
         #[test]
         fn with_model_accepts_string() {
-            let config = OllamaConfig::with_model(String::from("mistral"));
+            let config = OllamaConfig::for_model(String::from("mistral"));
             assert_eq!(config.model, "mistral");
         }
 
         #[test]
         fn with_model_accepts_str() {
-            let config = OllamaConfig::with_model("codellama");
+            let config = OllamaConfig::for_model("codellama");
             assert_eq!(config.model, "codellama");
         }
     }
@@ -352,7 +352,7 @@ mod tests {
 
         #[test]
         fn with_model_then_builder_chain() {
-            let config = OllamaConfig::with_model("llama3")
+            let config = OllamaConfig::for_model("llama3")
                 .base_url("http://gpu-server:11434")
                 .timeout(600)
                 .keep_alive("1h");

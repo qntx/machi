@@ -677,7 +677,7 @@ mod tests {
 
         #[test]
         fn default_model_returns_config_model() {
-            let config = OpenAIConfig::new("key").with_model("gpt-4-turbo");
+            let config = OpenAIConfig::new("key").model("gpt-4-turbo");
             let client = OpenAI::new(config).unwrap();
 
             assert_eq!(client.default_model(), "gpt-4-turbo");

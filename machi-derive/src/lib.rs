@@ -109,28 +109,6 @@ use proc_macro::TokenStream;
 /// }
 /// ```
 ///
-/// ## `output_type`
-///
-/// Overrides the inferred output type hint provided to the LLM.
-///
-/// ```rust,ignore
-/// #[tool(output_type = "json")]
-/// async fn get_config() -> ToolResult<serde_json::Value> {
-///     Ok(serde_json::json!({}))
-/// }
-/// ```
-///
-/// ## `output_schema`
-///
-/// Provides a JSON schema string for structured output validation.
-///
-/// ```rust,ignore
-/// #[tool(output_schema = r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#)]
-/// async fn get_user() -> ToolResult<User> {
-///     Ok(User { name: "Alice".into() })
-/// }
-/// ```
-///
 /// # Type Mapping
 ///
 /// Rust types are automatically mapped to JSON Schema types:

@@ -377,6 +377,44 @@ impl StreamAggregator {
             .map(|tc| crate::message::ToolCall::function(&tc.id, &tc.name, &tc.arguments))
             .collect()
     }
+
+    /// Converts the accumulated stream data into a [`ChatResponse`].
+    ///
+    /// Constructs an assistant message with either text content, tool calls,
+    /// or both, along with usage statistics and stop reason.
+    #[must_use]
+    pub fn into_chat_response(self) -> crate::chat::ChatResponse {
+        use crate::chat::ChatResponse;
+        use crate::message::{Content, Message, Role};
+
+        let tool_calls = self.build_tool_calls();
+        let has_text = !self.text.is_empty();
+        let has_tools = !tool_calls.is_empty();
+
+        let mut message = match (has_text, has_tools) {
+            (_, true) => {
+                let mut msg = Message::assistant_tool_calls(tool_calls);
+                if has_text {
+                    msg.content = Some(Content::text(self.text));
+                }
+                msg
+            }
+            _ => Message::new(Role::Assistant, Content::text(self.text)),
+        };
+
+        if !self.reasoning_content.is_empty() {
+            message.reasoning_content = Some(self.reasoning_content);
+        }
+
+        let mut response = ChatResponse::new(message);
+        if let Some(reason) = self.stop_reason {
+            response = response.with_stop_reason(reason);
+        }
+        if let Some(usage) = self.usage {
+            response = response.with_usage(usage);
+        }
+        response
+    }
 }
 
 #[cfg(test)]

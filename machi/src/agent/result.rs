@@ -222,6 +222,82 @@ pub struct ToolCallRecord {
     pub success: bool,
 }
 
+/// An observable event emitted during a streamed agent run.
+///
+/// `RunEvent` provides fine-grained visibility into the agent's execution,
+/// enabling real-time UIs, progress indicators, and streaming text display.
+/// Events are yielded in chronological order through the stream returned by
+/// [`Runner::run_streamed`](super::Runner::run_streamed).
+///
+/// # Event Flow
+///
+/// A typical successful run emits events in this order:
+///
+/// ```text
+/// RunStarted → StepStarted → TextDelta* → StepCompleted → RunCompleted
+///                           → ToolCallStarted* → ToolCallCompleted* ↩ (loop)
+/// ```
+///
+/// # Error Handling
+///
+/// Errors are delivered as `Err(...)` through the `Result<RunEvent>` stream
+/// rather than as a dedicated event variant, following Rust's idiomatic
+/// `try_stream` pattern.
+#[derive(Debug)]
+pub enum RunEvent {
+    /// The agent run has started.
+    RunStarted {
+        /// Name of the agent being executed.
+        agent_name: String,
+    },
+
+    /// A new reasoning step has begun.
+    StepStarted {
+        /// Step number (1-indexed).
+        step: usize,
+    },
+
+    /// Incremental text output from the LLM (for real-time display).
+    TextDelta(String),
+
+    /// Incremental reasoning/thinking content from the LLM (o1/o3 models).
+    ReasoningDelta(String),
+
+    /// Audio data delta from the LLM (for audio-capable models).
+    AudioDelta {
+        /// Base64-encoded audio data.
+        data: String,
+        /// Audio transcript (if available).
+        transcript: Option<String>,
+    },
+
+    /// A tool call has been identified from the LLM stream.
+    ToolCallStarted {
+        /// The tool call ID.
+        id: String,
+        /// The tool name.
+        name: String,
+    },
+
+    /// A tool call execution has completed.
+    ToolCallCompleted {
+        /// The completed tool call record.
+        record: ToolCallRecord,
+    },
+
+    /// A reasoning step has completed.
+    StepCompleted {
+        /// Metadata about the completed step.
+        step_info: Box<StepInfo>,
+    },
+
+    /// The agent run completed successfully with a final result.
+    RunCompleted {
+        /// The final run result.
+        result: Box<RunResult>,
+    },
+}
+
 /// Flexible input for an agent run, supporting text and multimodal content.
 ///
 /// `UserInput` abstracts over plain text and multimodal payloads so that

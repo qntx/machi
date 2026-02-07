@@ -20,6 +20,7 @@ full = ["openai", "ollama", "derive", "mcp", "toolkit", "memory-sqlite"]
 
 [dependencies]
 # Core dependencies
+async-stream.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 bytes.workspace = true

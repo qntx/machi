@@ -29,12 +29,14 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use futures::stream::Stream;
+
 use crate::callback::SharedAgentHooks;
 use crate::chat::SharedChatProvider;
 use crate::error::Result;
 use crate::tool::{BoxedTool, ToolDefinition, ToolExecutionPolicy};
 
-use super::result::{RunConfig, RunResult, UserInput};
+use super::result::{RunConfig, RunEvent, RunResult, UserInput};
 
 /// Instructions that guide the agent's behavior.
 ///
@@ -310,6 +312,22 @@ impl Agent {
         config: RunConfig,
     ) -> Pin<Box<dyn Future<Output = Result<RunResult>> + Send + 'a>> {
         super::Runner::run(self, input, config)
+    }
+
+    /// Execute a streaming agent run, returning a stream of [`RunEvent`]s.
+    ///
+    /// This is a convenience wrapper around [`Runner::run_streamed`](super::Runner::run_streamed)
+    /// that uses the agent's own provider.
+    ///
+    /// # Errors
+    ///
+    /// Errors are delivered as `Err(...)` items in the returned stream.
+    pub fn run_streamed<'a>(
+        &'a self,
+        input: impl Into<UserInput>,
+        config: RunConfig,
+    ) -> Pin<Box<dyn Stream<Item = Result<RunEvent>> + Send + 'a>> {
+        super::Runner::run_streamed(self, input, config)
     }
 
     /// Build a [`ToolDefinition`] for this agent when used as a managed sub-agent.

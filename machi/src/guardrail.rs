@@ -131,13 +131,6 @@ impl GuardrailOutput {
     }
 }
 
-/// Convenience conversion: a string becomes a tripwire output.
-impl From<&str> for GuardrailOutput {
-    fn from(reason: &str) -> Self {
-        Self::tripwire(Value::String(reason.to_owned()))
-    }
-}
-
 /// Trait for implementing input guardrail check logic.
 ///
 /// Implement this trait on your own struct to define custom input validation.
@@ -336,7 +329,6 @@ impl OutputGuardrail {
         let guardrail_output = self.check.check(context, agent_name, output).await?;
         Ok(OutputGuardrailResult {
             guardrail_name: self.name.clone(),
-            agent_output: output.clone(),
             output: guardrail_output,
         })
     }
@@ -355,9 +347,6 @@ impl std::fmt::Debug for OutputGuardrail {
 pub struct OutputGuardrailResult {
     /// Name of the guardrail that produced this result.
     pub guardrail_name: String,
-
-    /// The agent output that was checked.
-    pub agent_output: Value,
 
     /// The guardrail check output.
     pub output: GuardrailOutput,

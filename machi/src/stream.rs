@@ -191,14 +191,12 @@ pub enum StopReason {
     /// Maximum token limit reached.
     Length,
     /// Model decided to call tools.
+    #[serde(alias = "function_call")]
     ToolCalls,
     /// Content was filtered by safety systems.
     ContentFilter,
     /// Model is still generating (streaming only, no finish_reason yet).
     Null,
-    /// Deprecated: Function call (use ToolCalls instead).
-    #[serde(rename = "function_call")]
-    FunctionCall,
 }
 
 impl StopReason {
@@ -211,7 +209,6 @@ impl StopReason {
             Self::ToolCalls => "tool_calls",
             Self::ContentFilter => "content_filter",
             Self::Null => "null",
-            Self::FunctionCall => "function_call",
         }
     }
 
@@ -225,8 +222,7 @@ impl StopReason {
     pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "length" | "max_tokens" => Self::Length,
-            "tool_calls" | "tool_use" => Self::ToolCalls,
-            "function_call" => Self::FunctionCall,
+            "tool_calls" | "tool_use" | "function_call" => Self::ToolCalls,
             "content_filter" => Self::ContentFilter,
             "null" => Self::Null,
             // "stop", "end_turn", and any other value defaults to Stop
@@ -237,7 +233,7 @@ impl StopReason {
     /// Returns `true` if the model completed normally.
     #[must_use]
     pub const fn is_complete(&self) -> bool {
-        matches!(self, Self::Stop | Self::ToolCalls | Self::FunctionCall)
+        matches!(self, Self::Stop | Self::ToolCalls)
     }
 
     /// Returns `true` if the model was cut off due to length.
@@ -255,7 +251,7 @@ impl StopReason {
     /// Returns `true` if the model called tools/functions.
     #[must_use]
     pub const fn is_tool_call(&self) -> bool {
-        matches!(self, Self::ToolCalls | Self::FunctionCall)
+        matches!(self, Self::ToolCalls)
     }
 }
 
@@ -592,7 +588,6 @@ mod tests {
             assert_eq!(StopReason::ToolCalls.as_str(), "tool_calls");
             assert_eq!(StopReason::ContentFilter.as_str(), "content_filter");
             assert_eq!(StopReason::Null.as_str(), "null");
-            assert_eq!(StopReason::FunctionCall.as_str(), "function_call");
         }
 
         #[test]
@@ -603,7 +598,6 @@ mod tests {
                 StopReason::ToolCalls,
                 StopReason::ContentFilter,
                 StopReason::Null,
-                StopReason::FunctionCall,
             ] {
                 assert_eq!(reason.to_string(), reason.as_str());
             }
@@ -635,8 +629,8 @@ mod tests {
         }
 
         #[test]
-        fn parse_function_call() {
-            assert_eq!(StopReason::parse("function_call"), StopReason::FunctionCall);
+        fn parse_function_call_maps_to_tool_calls() {
+            assert_eq!(StopReason::parse("function_call"), StopReason::ToolCalls);
         }
 
         #[test]
@@ -672,7 +666,6 @@ mod tests {
         fn is_complete_returns_true() {
             assert!(StopReason::Stop.is_complete());
             assert!(StopReason::ToolCalls.is_complete());
-            assert!(StopReason::FunctionCall.is_complete());
         }
 
         #[test]
@@ -697,7 +690,6 @@ mod tests {
         #[test]
         fn is_tool_call() {
             assert!(StopReason::ToolCalls.is_tool_call());
-            assert!(StopReason::FunctionCall.is_tool_call());
             assert!(!StopReason::Stop.is_tool_call());
         }
 
@@ -716,9 +708,9 @@ mod tests {
         }
 
         #[test]
-        fn serde_function_call_rename() {
-            let json = serde_json::to_string(&StopReason::FunctionCall).unwrap();
-            assert_eq!(json, r#""function_call""#);
+        fn serde_function_call_deserializes_to_tool_calls() {
+            let parsed: StopReason = serde_json::from_str(r#""function_call""#).unwrap();
+            assert_eq!(parsed, StopReason::ToolCalls);
         }
 
         #[test]

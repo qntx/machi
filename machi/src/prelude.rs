@@ -62,7 +62,7 @@ pub use crate::tools::{
     BingProvider, BraveProvider, DuckDuckGoProvider, EditFileTool, ExecTool, ListDirTool,
     ReadFileTool, SearchProvider, SearxngProvider, TavilyProvider, WebSearchTool, WriteFileTool,
 };
-pub use crate::usage::{CompletionTokensDetails, PromptTokensDetails, Usage, UsageTracker};
+pub use crate::usage::{CompletionTokensDetails, PromptTokensDetails, Usage};
 #[cfg(feature = "wallet")]
 pub use crate::wallet::{EvmWallet, EvmWalletBuilder, WalletError};
 #[cfg(feature = "derive")]

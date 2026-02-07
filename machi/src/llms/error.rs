@@ -102,7 +102,7 @@ impl LlmError {
 
     /// Create a context exceeded error.
     #[must_use]
-    pub fn context_exceeded(used: usize, max: usize) -> Self {
+    pub const fn context_exceeded(used: usize, max: usize) -> Self {
         Self::ContextExceeded { used, max }
     }
 

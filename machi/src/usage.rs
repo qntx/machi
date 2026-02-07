@@ -258,81 +258,6 @@ impl std::fmt::Display for Usage {
     }
 }
 
-/// Aggregator for tracking cumulative token usage across multiple operations.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct UsageTracker {
-    /// Total accumulated usage.
-    total: Usage,
-    /// Number of operations tracked.
-    count: usize,
-}
-
-impl UsageTracker {
-    /// Create a new usage tracker.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            total: Usage::zero(),
-            count: 0,
-        }
-    }
-
-    /// Add usage from an operation.
-    pub fn add(&mut self, usage: Usage) {
-        self.total += usage;
-        self.count += 1;
-    }
-
-    /// Get the total accumulated usage.
-    #[must_use]
-    pub const fn total(&self) -> Usage {
-        self.total
-    }
-
-    /// Get the number of operations tracked.
-    #[must_use]
-    pub const fn count(&self) -> usize {
-        self.count
-    }
-
-    /// Calculate average usage per operation.
-    #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn average(&self) -> Option<Usage> {
-        if self.count == 0 {
-            return None;
-        }
-        // Safe truncation: count is typically small (number of LLM calls)
-        let count = self.count as u32;
-        Some(Usage {
-            input_tokens: self.total.input_tokens / count,
-            output_tokens: self.total.output_tokens / count,
-            total_tokens: self.total.total_tokens / count,
-            prompt_tokens_details: self
-                .total
-                .prompt_tokens_details
-                .map(|d| PromptTokensDetails {
-                    cached_tokens: d.cached_tokens / count,
-                    audio_tokens: d.audio_tokens / count,
-                }),
-            completion_tokens_details: self.total.completion_tokens_details.map(|d| {
-                CompletionTokensDetails {
-                    reasoning_tokens: d.reasoning_tokens / count,
-                    audio_tokens: d.audio_tokens / count,
-                    accepted_prediction_tokens: d.accepted_prediction_tokens / count,
-                    rejected_prediction_tokens: d.rejected_prediction_tokens / count,
-                }
-            }),
-        })
-    }
-
-    /// Reset the tracker.
-    pub const fn reset(&mut self) {
-        self.total = Usage::zero();
-        self.count = 0;
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -649,86 +574,6 @@ mod tests {
         }
     }
 
-    mod usage_tracker {
-        use super::*;
-
-        #[test]
-        fn new_creates_empty_tracker() {
-            let tracker = UsageTracker::new();
-            assert_eq!(tracker.count(), 0);
-            assert!(tracker.total().is_empty());
-        }
-
-        #[test]
-        fn default_creates_empty_tracker() {
-            let tracker = UsageTracker::default();
-            assert_eq!(tracker.count(), 0);
-        }
-
-        #[test]
-        fn add_increments_count() {
-            let mut tracker = UsageTracker::new();
-            tracker.add(Usage::new(100, 50));
-            assert_eq!(tracker.count(), 1);
-            tracker.add(Usage::new(200, 100));
-            assert_eq!(tracker.count(), 2);
-        }
-
-        #[test]
-        fn add_accumulates_total() {
-            let mut tracker = UsageTracker::new();
-            tracker.add(Usage::new(100, 50));
-            tracker.add(Usage::new(200, 100));
-            assert_eq!(tracker.total().input_tokens, 300);
-            assert_eq!(tracker.total().output_tokens, 150);
-        }
-
-        #[test]
-        fn average_returns_none_when_empty() {
-            let tracker = UsageTracker::new();
-            assert!(tracker.average().is_none());
-        }
-
-        #[test]
-        fn average_calculates_correctly() {
-            let mut tracker = UsageTracker::new();
-            tracker.add(Usage::new(100, 50));
-            tracker.add(Usage::new(200, 100));
-
-            let avg = tracker.average().unwrap();
-            assert_eq!(avg.input_tokens, 150);
-            assert_eq!(avg.output_tokens, 75);
-        }
-
-        #[test]
-        fn average_with_details() {
-            let mut tracker = UsageTracker::new();
-            tracker.add(Usage::new(100, 50).with_cached(10).with_reasoning(20));
-            tracker.add(Usage::new(100, 50).with_cached(30).with_reasoning(40));
-
-            let avg = tracker.average().unwrap();
-            assert_eq!(avg.cached_tokens(), 20);
-            assert_eq!(avg.reasoning_tokens(), 30);
-        }
-
-        #[test]
-        fn reset_clears_tracker() {
-            let mut tracker = UsageTracker::new();
-            tracker.add(Usage::new(100, 50));
-            tracker.reset();
-            assert_eq!(tracker.count(), 0);
-            assert!(tracker.total().is_empty());
-        }
-
-        #[test]
-        fn copy_trait() {
-            let mut tracker = UsageTracker::new();
-            tracker.add(Usage::new(100, 50));
-            let copy = tracker;
-            assert_eq!(tracker.count(), copy.count());
-        }
-    }
-
     mod integration {
         use super::*;
 
@@ -754,22 +599,6 @@ mod tests {
             assert_eq!(usage.input_tokens, 100);
             assert_eq!(usage.cached_tokens(), 20);
             assert_eq!(usage.reasoning_tokens(), 10);
-        }
-
-        #[test]
-        fn multi_turn_conversation_tracking() {
-            let mut tracker = UsageTracker::new();
-
-            // First turn
-            tracker.add(Usage::new(50, 100));
-            // Second turn (includes context)
-            tracker.add(Usage::new(150, 80));
-            // Third turn
-            tracker.add(Usage::new(230, 120));
-
-            assert_eq!(tracker.count(), 3);
-            assert_eq!(tracker.total().input_tokens, 430);
-            assert_eq!(tracker.total().output_tokens, 300);
         }
 
         #[test]

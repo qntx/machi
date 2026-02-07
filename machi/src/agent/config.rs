@@ -259,52 +259,52 @@ impl<S: Into<String>> From<S> for Instructions {
 /// - **`description`** — human-readable description (used when this agent is a managed agent)
 pub struct Agent {
     /// Unique name identifying this agent.
-    pub name: String,
+    pub(crate) name: String,
 
     /// System-level instructions (prompt) for the agent.
-    pub instructions: Instructions,
+    pub(crate) instructions: Instructions,
 
     /// LLM model identifier to use for this agent.
-    pub model: String,
+    pub(crate) model: String,
 
     /// The LLM provider this agent uses for chat completions.
     ///
     /// Each agent can have its own provider, enabling heterogeneous
     /// multi-agent systems with different LLMs.
-    pub provider: Option<SharedChatProvider>,
+    pub(crate) provider: Option<SharedChatProvider>,
 
     /// Tools available to this agent for function calling.
-    pub tools: Vec<BoxedTool>,
+    pub(crate) tools: Vec<BoxedTool>,
 
     /// Sub-agents that can be dispatched as tools.
     ///
-    /// Each managed agent is wrapped into a [`DynTool`](crate::tool::DynTool)
-    /// at runtime by the Runner, enabling parallel execution via `tokio::JoinSet`.
-    pub managed_agents: Vec<Self>,
+    /// Each managed agent is dispatched inline by the Runner,
+    /// enabling parallel execution via `futures::future::join_all`.
+    pub(crate) managed_agents: Vec<Self>,
 
     /// Optional per-agent lifecycle hooks.
-    pub hooks: Option<SharedAgentHooks>,
+    pub(crate) hooks: Option<SharedAgentHooks>,
 
     /// Maximum number of reasoning steps before the runner aborts.
-    pub max_steps: usize,
+    pub(crate) max_steps: usize,
 
     /// Human-readable description of what this agent does.
     ///
     /// When this agent is used as a managed agent, the description becomes the
     /// tool description visible to the parent agent's LLM.
-    pub description: String,
+    pub(crate) description: String,
 
     /// Per-tool execution policies (overrides the default `Auto` policy).
     ///
     /// Tools not listed here default to [`ToolExecutionPolicy::Auto`].
-    pub tool_policies: HashMap<String, ToolExecutionPolicy>,
+    pub(crate) tool_policies: HashMap<String, ToolExecutionPolicy>,
 
     /// Optional schema for structured JSON output.
     ///
     /// When set, the Runner constrains LLM responses to produce valid JSON
     /// conforming to this schema, and parses the text output as a JSON
     /// [`Value`](serde_json::Value) in [`RunResult::output`](super::RunResult).
-    pub output_schema: Option<OutputSchema>,
+    pub(crate) output_schema: Option<OutputSchema>,
 
     /// Input guardrails that validate user input before or alongside the LLM.
     ///
@@ -314,14 +314,14 @@ pub struct Agent {
     ///
     /// If any guardrail's tripwire is triggered, the run halts immediately
     /// with [`Error::InputGuardrailTriggered`](crate::Error::InputGuardrailTriggered).
-    pub input_guardrails: Vec<InputGuardrail>,
+    pub(crate) input_guardrails: Vec<InputGuardrail>,
 
     /// Output guardrails that validate the agent's final response.
     ///
     /// These checks run concurrently after the agent produces a final output.
     /// If any guardrail's tripwire is triggered, the output is discarded and
     /// [`Error::OutputGuardrailTriggered`](crate::Error::OutputGuardrailTriggered) is returned.
-    pub output_guardrails: Vec<OutputGuardrail>,
+    pub(crate) output_guardrails: Vec<OutputGuardrail>,
 }
 
 impl fmt::Debug for Agent {
@@ -533,6 +533,42 @@ impl Agent {
     #[must_use]
     pub fn output_type<T: schemars::JsonSchema>(self) -> Self {
         self.output_schema(OutputSchema::from_type::<T>())
+    }
+
+    /// Returns the agent's name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the agent's model identifier.
+    #[must_use]
+    pub fn get_model(&self) -> &str {
+        &self.model
+    }
+
+    /// Returns the agent's description.
+    #[must_use]
+    pub fn get_description(&self) -> &str {
+        &self.description
+    }
+
+    /// Returns the maximum number of reasoning steps.
+    #[must_use]
+    pub const fn get_max_steps(&self) -> usize {
+        self.max_steps
+    }
+
+    /// Returns `true` if a provider is configured.
+    #[must_use]
+    pub fn has_provider(&self) -> bool {
+        self.provider.is_some()
+    }
+
+    /// Returns the number of tools registered on this agent.
+    #[must_use]
+    pub fn tool_count(&self) -> usize {
+        self.tools.len()
     }
 
     /// Resolve the system instructions for this agent.

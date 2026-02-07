@@ -7,8 +7,8 @@
 //!   heterogeneous multi-agent systems where each agent uses a different model.
 //! - **[`Runner`]** is a stateless execution engine that drives the agent through
 //!   a ReAct-style reasoning loop (think → act → observe → repeat).
-//! - **Managed agents** are sub-agents wrapped as tools ([`ManagedAgentTool`]),
-//!   enabling parallel task dispatch via `tokio::JoinSet` — inspired by smolagents.
+//! - **Managed agents** are sub-agents registered via [`Agent::managed_agent`],
+//!   dispatched inline by the Runner as parallel tool calls — inspired by smolagents.
 //!
 //! # Quick Start
 //!
@@ -52,13 +52,11 @@
 mod config;
 pub mod error;
 mod hook;
-mod managed;
 pub mod result;
 mod runner;
 
 pub use config::{Agent, Instructions, OutputSchema};
 pub use error::AgentError;
-pub use managed::ManagedAgentTool;
 pub use result::{
     NextStep, RunConfig, RunEvent, RunResult, StepInfo, ToolCallRecord, ToolCallRequest, UserInput,
 };

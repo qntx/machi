@@ -97,35 +97,6 @@ impl From<serde_json::Error> for ToolError {
 /// A type alias for `Result<T, ToolError>`.
 pub type ToolResult<T> = Result<T, ToolError>;
 
-/// Type of tool in the OpenAI API.
-///
-/// Currently only "function" is supported, but this enum allows
-/// for future extensibility (e.g., "custom" tools with grammars).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum ToolType {
-    /// A function tool defined by JSON schema.
-    #[default]
-    Function,
-}
-
-impl ToolType {
-    /// Returns the string representation.
-    #[must_use]
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            Self::Function => "function",
-        }
-    }
-}
-
-impl fmt::Display for ToolType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 /// Definition of a tool for LLM function calling.
 ///
 /// # OpenAI API Alignment
@@ -570,41 +541,6 @@ impl ToolCallResult {
 )]
 mod tests {
     use super::*;
-
-    mod tool_type {
-        use super::*;
-
-        #[test]
-        fn as_str_returns_function() {
-            assert_eq!(ToolType::Function.as_str(), "function");
-        }
-
-        #[test]
-        fn display_matches_as_str() {
-            assert_eq!(ToolType::Function.to_string(), "function");
-        }
-
-        #[test]
-        fn default_is_function() {
-            assert_eq!(ToolType::default(), ToolType::Function);
-        }
-
-        #[test]
-        fn serde_roundtrip() {
-            let tool_type = ToolType::Function;
-            let json = serde_json::to_string(&tool_type).unwrap();
-            assert_eq!(json, r#""function""#);
-            let parsed: ToolType = serde_json::from_str(&json).unwrap();
-            assert_eq!(parsed, tool_type);
-        }
-
-        #[test]
-        fn copy_trait() {
-            let tool_type = ToolType::Function;
-            let copy = tool_type;
-            assert_eq!(tool_type, copy);
-        }
-    }
 
     mod tool_definition {
         use super::*;

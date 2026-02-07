@@ -11,8 +11,8 @@
 #[cfg(feature = "a2a")]
 pub use crate::a2a::{A2aAgent, A2aAgentBuilder};
 pub use crate::agent::{
-    Agent, AgentError, Instructions, ManagedAgentTool, NextStep, OutputSchema, RunConfig, RunEvent,
-    RunResult, Runner, StepInfo, ToolCallRecord, ToolCallRequest, UserInput,
+    Agent, AgentError, Instructions, NextStep, OutputSchema, RunConfig, RunEvent, RunResult,
+    Runner, StepInfo, ToolCallRecord, ToolCallRequest, UserInput,
 };
 pub use crate::audio::{
     AudioFormat, AudioProvider, SpeechRequest, SpeechResponse, SpeechToTextProvider,
@@ -55,7 +55,7 @@ pub use crate::tool::{
     AlwaysDenyHandler, AutoApproveHandler, BoxedConfirmationHandler, BoxedTool,
     ConfirmationHandler, DynTool, SharedConfirmationHandler, Tool, ToolCallResult,
     ToolConfirmationRequest, ToolConfirmationResponse, ToolDefinition, ToolError,
-    ToolExecutionPolicy, ToolResult, ToolType,
+    ToolExecutionPolicy, ToolResult,
 };
 #[cfg(feature = "toolkit")]
 pub use crate::tools::{

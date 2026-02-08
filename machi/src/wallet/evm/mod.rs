@@ -6,5 +6,7 @@ mod ens;
 mod erc20;
 pub(crate) mod tools;
 mod wallet;
+#[cfg(feature = "x402")]
+pub mod x402;
 
 pub use wallet::EvmWallet;

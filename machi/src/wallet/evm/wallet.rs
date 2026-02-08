@@ -625,6 +625,30 @@ impl EvmWallet {
 }
 
 impl EvmWallet {
+    /// Create an x402-enabled HTTP client from this wallet's signer.
+    ///
+    /// The returned client transparently handles HTTP 402 responses by
+    /// signing ERC-3009 payment authorizations using this wallet's
+    /// [`PrivateKeySigner`]. No gas is consumed for payment signing.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use machi::wallet::EvmWallet;
+    ///
+    /// # async fn example() -> machi::Result<()> {
+    /// let wallet = EvmWallet::from_private_key("0x...", "https://base-rpc.example.com").await?;
+    /// let client = wallet.x402_client();
+    /// let body = client.get("https://api.example.com/paid").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "x402")]
+    #[must_use]
+    pub fn x402_client(&self) -> super::x402::X402HttpClient {
+        super::x402::X402HttpClient::from_wallet(self)
+    }
+
     /// Convert this wallet into agent-callable tools, consuming it.
     ///
     /// Provides tools for:

@@ -17,10 +17,11 @@ derive = ["machi-derive"]
 a2a = ["ra2a"]
 mcp = ["rmcp"]
 wallet = ["kobe", "kobe-eth", "alloy"]
+x402 = ["wallet", "dep:x402-reqwest", "dep:x402-chain-eip155", "dep:x402-types", "dep:reqwest-middleware"]
 toolkit = []
 memory-sqlite = ["dep:rusqlite"]
 schema = ["dep:schemars"]
-full = ["openai", "ollama", "derive", "a2a", "mcp", "wallet", "toolkit", "memory-sqlite", "schema"]
+full = ["openai", "ollama", "derive", "a2a", "mcp", "wallet", "x402", "toolkit", "memory-sqlite", "schema"]
 
 [dependencies]
 alloy = { workspace = true, optional = true }
@@ -35,8 +36,12 @@ ra2a = { workspace = true, optional = true }
 regex.workspace = true
 reqwest.workspace = true
 rmcp = { workspace = true, optional = true }
+reqwest-middleware = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
+x402-types = { workspace = true, optional = true }
+x402-reqwest = { workspace = true, optional = true }
+x402-chain-eip155 = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

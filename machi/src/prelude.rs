@@ -70,6 +70,8 @@ pub use crate::tools::{
     ReadFileTool, SearchProvider, SearxngProvider, TavilyProvider, WebSearchTool, WriteFileTool,
 };
 pub use crate::usage::Usage;
+#[cfg(feature = "x402")]
+pub use crate::wallet::X402HttpClient;
 #[cfg(feature = "wallet")]
 pub use crate::wallet::{
     DerivationStyle, DerivedAddress, EvmChain, EvmWallet, HdWallet, Wallet, WalletError,

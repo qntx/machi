@@ -30,6 +30,11 @@ pub enum WalletError {
     /// Transaction-related error.
     #[error("Transaction error: {0}")]
     Transaction(String),
+
+    /// x402 payment protocol error.
+    #[cfg(feature = "x402")]
+    #[error("x402 payment error: {0}")]
+    Payment(String),
 }
 
 impl WalletError {
@@ -61,6 +66,13 @@ impl WalletError {
     #[must_use]
     pub fn transaction(msg: impl Into<String>) -> Self {
         Self::Transaction(msg.into())
+    }
+
+    /// Create an x402 payment error.
+    #[cfg(feature = "x402")]
+    #[must_use]
+    pub fn payment(msg: impl Into<String>) -> Self {
+        Self::Payment(msg.into())
     }
 }
 

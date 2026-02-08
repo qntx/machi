@@ -40,10 +40,12 @@ use std::fmt;
 use async_trait::async_trait;
 
 mod error;
-pub mod eth;
+pub mod evm;
 
 pub use error::WalletError;
-pub use eth::EvmWallet;
+pub use evm::EvmWallet;
+#[cfg(feature = "x402")]
+pub use evm::x402::X402HttpClient;
 
 // Re-export kobe for direct use as the multi-chain HD wallet.
 pub use kobe::Wallet as HdWallet;

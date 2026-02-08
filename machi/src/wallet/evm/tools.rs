@@ -42,6 +42,10 @@ pub fn create_tools(wallet: &Arc<EvmWallet>) -> Vec<BoxedTool> {
         tools.push(Box::new(ReverseEnsTool(Arc::clone(wallet))));
     }
 
+    // x402 payment-enabled HTTP fetch tool.
+    #[cfg(feature = "x402")]
+    tools.extend(super::x402::create_tools(wallet));
+
     tools
 }
 

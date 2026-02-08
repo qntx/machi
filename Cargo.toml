@@ -19,6 +19,7 @@ async-trait = "0.1"
 base64 = "0.22"
 convert_case = "0.11.0"
 darling = "0.23.0"
+erc8004 = "0.2"
 futures = "0.3"
 kobe = { version = "0.4", default-features = false, features = ["std", "rand"] }
 kobe-eth = { version = "0.4", default-features = false, features = ["std", "rand"] }

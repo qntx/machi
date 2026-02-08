@@ -46,6 +46,10 @@ pub fn create_tools(wallet: &Arc<EvmWallet>) -> Vec<BoxedTool> {
     #[cfg(feature = "x402")]
     tools.extend(super::x402::create_tools(wallet));
 
+    // ERC-8004 trustless agent registry tools.
+    #[cfg(feature = "erc8004")]
+    tools.extend(super::erc8004::create_tools(wallet));
+
     tools
 }
 

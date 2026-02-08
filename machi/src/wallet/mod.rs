@@ -42,6 +42,8 @@ use async_trait::async_trait;
 mod error;
 pub mod evm;
 
+#[cfg(feature = "erc8004")]
+pub use erc8004::{Network as Erc8004Network, types::RegistrationFile};
 pub use error::WalletError;
 pub use evm::EvmWallet;
 #[cfg(feature = "x402")]

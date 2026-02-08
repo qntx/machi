@@ -35,6 +35,11 @@ pub enum WalletError {
     #[cfg(feature = "x402")]
     #[error("x402 payment error: {0}")]
     Payment(String),
+
+    /// ERC-8004 registry interaction error.
+    #[cfg(feature = "erc8004")]
+    #[error("ERC-8004 error: {0}")]
+    Erc8004(String),
 }
 
 impl WalletError {
@@ -73,6 +78,13 @@ impl WalletError {
     #[must_use]
     pub fn payment(msg: impl Into<String>) -> Self {
         Self::Payment(msg.into())
+    }
+
+    /// Create an ERC-8004 registry error.
+    #[cfg(feature = "erc8004")]
+    #[must_use]
+    pub fn erc8004(msg: impl Into<String>) -> Self {
+        Self::Erc8004(msg.into())
     }
 }
 

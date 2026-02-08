@@ -18,16 +18,18 @@ a2a = ["ra2a"]
 mcp = ["rmcp"]
 wallet = ["kobe", "kobe-eth", "alloy"]
 x402 = ["wallet", "dep:x402-reqwest", "dep:x402-chain-eip155", "dep:x402-types", "dep:reqwest-middleware"]
+erc8004 = ["wallet", "dep:erc8004"]
 toolkit = []
 memory-sqlite = ["dep:rusqlite"]
 schema = ["dep:schemars"]
-full = ["openai", "ollama", "derive", "a2a", "mcp", "wallet", "x402", "toolkit", "memory-sqlite", "schema"]
+full = ["openai", "ollama", "derive", "a2a", "mcp", "wallet", "x402", "erc8004", "toolkit", "memory-sqlite", "schema"]
 
 [dependencies]
 alloy = { workspace = true, optional = true }
 async-stream.workspace = true
 async-trait.workspace = true
 base64.workspace = true
+erc8004 = { workspace = true, optional = true }
 futures.workspace = true
 kobe = { workspace = true, optional = true }
 kobe-eth = { workspace = true, optional = true }

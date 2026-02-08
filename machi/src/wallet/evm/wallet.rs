@@ -625,6 +625,33 @@ impl EvmWallet {
 }
 
 impl EvmWallet {
+    /// Create an ERC-8004 client from this wallet's provider.
+    ///
+    /// Automatically configures registry addresses if the wallet's chain
+    /// is a known ERC-8004 deployment (Ethereum, Base, Polygon, etc.).
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use machi::wallet::EvmWallet;
+    ///
+    /// # async fn example() -> machi::Result<()> {
+    /// let wallet = EvmWallet::from_private_key("0x...", "https://base-rpc.example.com").await?;
+    /// let client = wallet.erc8004_client();
+    /// let version = client.identity().unwrap().get_version().await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "erc8004")]
+    #[must_use]
+    pub fn erc8004_client(&self) -> erc8004::Erc8004<&DynProvider<Ethereum>> {
+        let client = erc8004::Erc8004::new(self.provider());
+        match super::erc8004::network_from_chain_id(self.chain_id()) {
+            Some(network) => client.with_network(network),
+            None => client,
+        }
+    }
+
     /// Create an x402-enabled HTTP client from this wallet's signer.
     ///
     /// The returned client transparently handles HTTP 402 responses by

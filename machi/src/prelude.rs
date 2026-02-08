@@ -71,6 +71,8 @@ pub use crate::tools::{
 };
 pub use crate::usage::Usage;
 #[cfg(feature = "wallet")]
-pub use crate::wallet::{EvmWallet, EvmWalletBuilder, WalletError};
+pub use crate::wallet::{
+    DerivationStyle, DerivedAddress, EvmChain, EvmWallet, HdWallet, Wallet, WalletError,
+};
 #[cfg(feature = "derive")]
 pub use machi_derive::tool;

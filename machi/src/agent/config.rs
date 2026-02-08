@@ -439,6 +439,36 @@ impl Agent {
         self
     }
 
+    /// Attach an EVM wallet, automatically registering its tools.
+    ///
+    /// The wallet's tools (`get_wallet_info`, `get_balance`, `sign_message`,
+    /// `transfer`) are added to the agent's tool set.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use machi::agent::Agent;
+    /// use machi::wallet::EvmWallet;
+    ///
+    /// # async fn example() -> machi::Result<()> {
+    /// let wallet = EvmWallet::from_mnemonic(
+    ///     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    ///     None, 0, "https://eth.llamarpc.com",
+    /// ).await?;
+    ///
+    /// let agent = Agent::new("defi-bot")
+    ///     .wallet(wallet)
+    ///     .instructions("You are a DeFi assistant.");
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "wallet")]
+    #[must_use]
+    pub fn wallet(mut self, wallet: crate::wallet::EvmWallet) -> Self {
+        self.tools.extend(wallet.into_tools());
+        self
+    }
+
     /// Set the execution policy for a specific tool.
     #[must_use]
     pub fn tool_policy(mut self, name: impl Into<String>, policy: ToolExecutionPolicy) -> Self {

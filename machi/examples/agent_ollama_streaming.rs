@@ -10,10 +10,11 @@
 
 #![allow(clippy::print_stdout)]
 
-use futures::StreamExt;
-use machi::prelude::*;
 use std::io::{Write, stdout};
 use std::sync::Arc;
+
+use futures::StreamExt;
+use machi::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {

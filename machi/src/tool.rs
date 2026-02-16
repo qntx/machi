@@ -10,10 +10,11 @@
 //! - Supports `strict` mode for Structured Outputs
 //! - Compatible with both Chat Completions and Responses APIs
 
+use std::fmt;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt;
 
 /// Error type for tool execution failures.
 #[derive(Debug, Clone, thiserror::Error)]

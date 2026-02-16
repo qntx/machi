@@ -10,11 +10,12 @@
 
 #![allow(clippy::print_stdout)]
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use machi::prelude::*;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 /// A simple weather tool that returns mock data.
 struct GetWeather;

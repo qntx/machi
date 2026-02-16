@@ -5,9 +5,10 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
-
 use tracing::{Instrument, debug, error, info, info_span};
 
+use super::client::{OpenAI, OpenAIToolCall, StreamOptions};
+use super::stream::parse_sse_events;
 use crate::chat::ChatProvider;
 use crate::chat::{ChatRequest, ChatResponse};
 use crate::error::Result;
@@ -15,9 +16,6 @@ use crate::llms::LlmError;
 use crate::message::{Content, Role, ToolCall as MsgToolCall};
 use crate::stream::{StopReason, StreamChunk};
 use crate::usage::Usage;
-
-use super::client::{OpenAI, OpenAIToolCall, StreamOptions};
-use super::stream::parse_sse_events;
 
 /// `OpenAI` chat completion response.
 #[derive(Debug, Clone, Deserialize)]

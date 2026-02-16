@@ -5,18 +5,16 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
-
 use tracing::{Instrument, debug, error, info, info_span};
 
+use super::client::{Ollama, OllamaToolCall};
+use super::stream::parse_stream_line;
 use crate::chat::ChatProvider;
 use crate::chat::{ChatRequest, ChatResponse};
 use crate::error::{LlmError, Result};
 use crate::message::{Content, Message, Role, ToolCall};
 use crate::stream::{StopReason, StreamChunk};
 use crate::usage::Usage;
-
-use super::client::{Ollama, OllamaToolCall};
-use super::stream::parse_stream_line;
 
 /// Ollama chat completion response.
 #[derive(Debug, Clone, Deserialize)]

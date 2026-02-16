@@ -30,13 +30,14 @@
 //!     .name("currency-agent");
 //! ```
 
+use std::fmt::Write as _;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use futures::StreamExt;
 use ra2a::client::{A2AClient, A2AClientBuilder, Client, ClientEvent};
 use ra2a::types::{AgentCard, Message as A2aMessage};
 use serde_json::Value;
-use std::fmt::Write as _;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 

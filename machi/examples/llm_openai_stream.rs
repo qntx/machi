@@ -7,9 +7,10 @@
 
 #![allow(clippy::print_stdout)]
 
+use std::io::{Write, stdout};
+
 use futures::StreamExt;
 use machi::prelude::*;
-use std::io::{Write, stdout};
 
 #[tokio::main]
 async fn main() -> Result<()> {

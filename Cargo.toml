@@ -1,6 +1,7 @@
 [workspace]
 members = ["machi", "machi-derive"]
 default-members = ["machi"]
+exclude = ["3rdparty"]
 resolver = "3"
 
 [workspace.package]
@@ -10,8 +11,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/machi"
 
 [workspace.dependencies]
-machi = { version = "0.7.3", path = "machi" }
-machi-derive = { version = "0.7.3", path = "machi-derive" }
+machi = { version = "0.7", path = "machi" }
+machi-derive = { version = "0.7", path = "machi-derive" }
 
 alloy = { version = "1", default-features = false, features = ["signers", "signer-local", "provider-http", "network", "consensus", "sol-types", "rpc-types", "k256"] }
 async-stream = "0.3"
@@ -30,9 +31,9 @@ regex = "1.11"
 reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }
 reqwest-middleware = "0.5"
 rmcp = { version = "0.14", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
-x402-types = { version = "1.1", default-features = false }
-x402-reqwest = { version = "1.1", default-features = false }
-x402-chain-eip155 = { version = "1.1", default-features = false, features = ["client"] }
+r402 = { version = "0.10", default-features = false }
+r402-evm = { version = "0.10", default-features = false, features = ["client"] }
+r402-http = { version = "0.10", default-features = false, features = ["client"] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }

@@ -15,6 +15,9 @@
 //!     .model("gpt-4o");
 //! ```
 
+#[cfg(feature = "derive")]
+pub use machi_derive::tool;
+
 #[cfg(feature = "a2a")]
 pub use crate::a2a::{A2aAgent, A2aAgentBuilder};
 pub use crate::agent::{
@@ -78,5 +81,3 @@ pub use crate::wallet::{
 };
 #[cfg(feature = "erc8004")]
 pub use crate::wallet::{Erc8004Network, RegistrationFile};
-#[cfg(feature = "derive")]
-pub use machi_derive::tool;

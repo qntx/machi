@@ -21,11 +21,10 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
+use super::context::RunContext;
 use crate::chat::ChatResponse;
 use crate::error::Error;
 use crate::message::Message;
-
-use super::context::RunContext;
 
 /// A boxed, thread-safe [`RunHooks`] trait object.
 pub type BoxedRunHooks = Box<dyn RunHooks>;
@@ -140,10 +139,10 @@ pub trait AgentHooks: Send + Sync {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::*;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use super::*;
     use crate::agent::AgentError;
     use crate::chat::ChatResponse;
     use crate::message::Message;

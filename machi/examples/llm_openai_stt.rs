@@ -7,9 +7,10 @@
 
 #![allow(clippy::print_stdout)]
 
+use std::fs;
+
 use machi::audio::{AudioFormat, SpeechToTextProvider, TranscriptionRequest};
 use machi::prelude::*;
-use std::fs;
 
 #[tokio::main]
 async fn main() -> Result<()> {

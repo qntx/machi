@@ -18,11 +18,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use r402_evm::Eip155ExactClient;
+use r402_http::client::{ReqwestWithPayments, ReqwestWithPaymentsBuild, X402Client};
 use reqwest::Client;
 use serde_json::Value;
 use tracing::debug;
-use x402_chain_eip155::{V1Eip155ExactClient, V2Eip155ExactClient};
-use x402_reqwest::{ReqwestWithPayments, ReqwestWithPaymentsBuild, X402Client};
 
 use super::wallet::EvmWallet;
 use crate::tool::{BoxedTool, DynTool, ToolDefinition, ToolError};
@@ -51,9 +51,7 @@ impl X402HttpClient {
     pub fn from_wallet(wallet: &EvmWallet) -> Self {
         let signer = Arc::new(wallet.signer().clone());
 
-        let x402_client = X402Client::new()
-            .register(V1Eip155ExactClient::new(Arc::clone(&signer)))
-            .register(V2Eip155ExactClient::new(signer));
+        let x402_client = X402Client::new().register(Eip155ExactClient::new(signer));
 
         let inner = Client::new().with_payments(x402_client).build();
 

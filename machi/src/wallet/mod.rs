@@ -48,10 +48,8 @@ pub use error::WalletError;
 pub use evm::EvmWallet;
 #[cfg(feature = "x402")]
 pub use evm::x402::X402HttpClient;
-
 // Re-export kobe for direct use as the multi-chain HD wallet.
 pub use kobe::Wallet as HdWallet;
-
 // Re-export kobe-eth types used in the public API.
 pub use kobe_eth::{DerivationStyle, DerivedAddress};
 

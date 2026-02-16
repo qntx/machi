@@ -26,13 +26,14 @@
 //!     .with_max_results(5);
 //! ```
 
+use std::fmt;
+use std::fmt::Write as _;
+use std::sync::LazyLock;
+
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt;
-use std::fmt::Write as _;
-use std::sync::LazyLock;
 
 /// Percent-encode a query string value (minimal subset for URL safety).
 fn url_encode(input: &str) -> String {

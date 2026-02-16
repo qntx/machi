@@ -56,9 +56,9 @@ impl AgentHooks for NoopAgentHooks {}
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::*;
     use std::sync::Arc;
 
+    use super::*;
     use crate::agent::AgentError;
     use crate::callback::context::RunContext;
     use crate::callback::hooks::{

@@ -10,9 +10,10 @@
 
 #![allow(clippy::print_stdout, clippy::unused_async)]
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use machi::prelude::*;
-use std::sync::Arc;
 
 /// Blocks requests that are not about programming or technology.
 struct TopicFilter;

@@ -8,12 +8,11 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::config::OllamaConfig;
 use crate::chat::ChatRequest;
 use crate::error::{LlmError, Result};
 use crate::message::{Content, ContentPart, Message, Role};
 use crate::tool::ToolDefinition;
-
-use super::config::OllamaConfig;
 
 /// Ollama chat completion request.
 #[derive(Debug, Clone, Serialize)]

@@ -14,12 +14,13 @@
 // False positive: clippy misinterprets darling's `default` attribute as `if !default`
 #![allow(clippy::if_not_else)]
 
+use std::collections::HashMap;
+
 use convert_case::{Case, Casing};
 use darling::{FromMeta, ast::NestedMeta};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use std::collections::HashMap;
 use syn::{
     Attribute, Expr, ExprLit, FnArg, Ident, ItemFn, Lit, Meta, Pat, PathArguments, ReturnType,
     Type, parse_macro_input,

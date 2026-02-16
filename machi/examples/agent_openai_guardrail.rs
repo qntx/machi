@@ -10,9 +10,10 @@
 
 #![allow(clippy::print_stdout, clippy::unused_async)]
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use machi::prelude::*;
-use std::sync::Arc;
 
 /// Blocks requests that contain personal identifiable information.
 struct PiiDetector;

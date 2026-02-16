@@ -10,8 +10,9 @@
 
 #![allow(clippy::print_stdout)]
 
-use machi::prelude::*;
 use std::sync::Arc;
+
+use machi::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {

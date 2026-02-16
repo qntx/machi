@@ -18,12 +18,11 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
+use super::context::RunContext;
+use super::hooks::{AgentHooks, RunHooks};
 use crate::chat::ChatResponse;
 use crate::error::Error;
 use crate::message::Message;
-
-use super::context::RunContext;
-use super::hooks::{AgentHooks, RunHooks};
 
 /// Log verbosity level for hook events.
 ///
@@ -276,7 +275,6 @@ impl AgentHooks for LoggingAgentHooks {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-
     use crate::agent::AgentError;
     use crate::callback::context::RunContext;
     use crate::callback::hooks::{AgentHooks, BoxedAgentHooks, BoxedRunHooks, RunHooks};

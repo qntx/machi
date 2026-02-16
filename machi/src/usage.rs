@@ -10,8 +10,9 @@
 //! - `prompt_tokens_details` (`cached_tokens`, `audio_tokens`)
 //! - `completion_tokens_details` (`reasoning_tokens`, `audio_tokens`, prediction tokens)
 
-use serde::{Deserialize, Serialize};
 use std::ops::{Add, AddAssign};
+
+use serde::{Deserialize, Serialize};
 
 /// Detailed breakdown of prompt/input tokens.
 ///

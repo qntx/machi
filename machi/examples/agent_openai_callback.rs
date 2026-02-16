@@ -10,10 +10,11 @@
 
 #![allow(clippy::print_stdout)]
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use machi::prelude::*;
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Custom hooks that print lifecycle events to stdout.
 struct PrintHooks;

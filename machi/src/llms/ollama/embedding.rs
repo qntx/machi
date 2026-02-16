@@ -3,12 +3,11 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::client::Ollama;
 use crate::embedding::{
     Embedding, EmbeddingProvider, EmbeddingRequest, EmbeddingResponse, EmbeddingUsage,
 };
 use crate::error::{LlmError, Result};
-
-use super::client::Ollama;
 
 /// Default embedding model for Ollama.
 const DEFAULT_EMBEDDING_MODEL: &str = "nomic-embed-text";

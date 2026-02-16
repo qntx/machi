@@ -11,10 +11,11 @@
 
 #![allow(clippy::print_stdout, clippy::unused_async, clippy::unnecessary_wraps)]
 
-use async_trait::async_trait;
-use machi::prelude::*;
 use std::io::{Write, stdout};
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use machi::prelude::*;
 
 /// A confirmation handler that prompts the user in the terminal.
 struct TerminalConfirmation;

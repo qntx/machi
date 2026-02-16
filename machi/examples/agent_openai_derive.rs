@@ -10,8 +10,9 @@
 
 #![allow(clippy::print_stdout, clippy::unused_async, clippy::unnecessary_wraps)]
 
-use machi::prelude::*;
 use std::sync::Arc;
+
+use machi::prelude::*;
 
 /// Get the current weather for a city.
 ///

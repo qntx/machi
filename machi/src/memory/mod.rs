@@ -44,6 +44,5 @@ mod sqlite;
 pub use error::MemoryError;
 pub use in_memory::InMemorySession;
 pub use session::{BoxedSession, Session, SharedSession};
-
 #[cfg(feature = "memory-sqlite")]
 pub use sqlite::SqliteSession;

@@ -2,11 +2,10 @@
 
 use serde::Deserialize;
 
+use super::client::OllamaToolCall;
 use crate::error::{LlmError, Result};
 use crate::stream::{StopReason, StreamChunk};
 use crate::usage::Usage;
-
-use super::client::OllamaToolCall;
 
 /// Ollama streaming response chunk.
 #[derive(Debug, Clone, Deserialize)]

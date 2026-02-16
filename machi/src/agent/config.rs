@@ -29,16 +29,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use futures::stream::Stream;
-
 use serde_json::Value;
 
+use super::result::{RunConfig, RunEvent, RunResult, UserInput};
 use crate::callback::SharedAgentHooks;
 use crate::chat::{ResponseFormat, SharedChatProvider};
 use crate::error::Result;
 use crate::guardrail::{InputGuardrail, OutputGuardrail};
 use crate::tool::{BoxedTool, ToolDefinition, ToolExecutionPolicy};
-
-use super::result::{RunConfig, RunEvent, RunResult, UserInput};
 
 /// Schema specification for structured agent output.
 ///

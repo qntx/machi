@@ -10,10 +10,11 @@
 
 #![allow(clippy::print_stdout)]
 
+use std::sync::Arc;
+
 use machi::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
-use std::sync::Arc;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct Country {

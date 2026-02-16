@@ -3,12 +3,11 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::client::OpenAI;
 use crate::embedding::{
     Embedding, EmbeddingProvider, EmbeddingRequest, EmbeddingResponse, EmbeddingUsage,
 };
 use crate::error::{LlmError, Result};
-
-use super::client::OpenAI;
 
 /// `OpenAI` embedding request.
 #[derive(Debug, Clone, Serialize)]

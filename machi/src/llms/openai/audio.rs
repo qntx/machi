@@ -3,13 +3,12 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::client::OpenAI;
 use crate::audio::{
     SpeechRequest, SpeechResponse, SpeechToTextProvider, TextToSpeechProvider,
     TranscriptionRequest, TranscriptionResponse, Voice,
 };
 use crate::error::{LlmError, Result};
-
-use super::client::OpenAI;
 
 /// `OpenAI` text-to-speech request.
 #[derive(Debug, Clone, Serialize)]

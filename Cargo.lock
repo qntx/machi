@@ -5673,10 +5673,11 @@ dependencies = [
 
 [[package]]
 name = "x402-chain-eip155"
-version = "1.1.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d544f6ff59cf6b9ecd1b126b406275dd2f155a2c96b2072dde138b07342f3e"
+checksum = "df956975410a5670fa9e318db3a71f288f67d37df8ecd77a5726d2cd4a50165c"
 dependencies = [
+ "alloy-contract",
  "alloy-primitives",
  "alloy-signer",
  "alloy-signer-local",

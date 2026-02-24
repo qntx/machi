@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use r402_evm::Eip155ExactClient;
-use r402_http::client::{ReqwestWithPayments, ReqwestWithPaymentsBuild, X402Client};
+use r402_http::client::{WithPayments, X402Client};
 use reqwest::Client;
 use serde_json::Value;
 use tracing::debug;
@@ -53,7 +53,7 @@ impl X402HttpClient {
 
         let x402_client = X402Client::new().register(Eip155ExactClient::new(signer));
 
-        let inner = Client::new().with_payments(x402_client).build();
+        let inner = Client::new().with_payments(x402_client);
 
         debug!(
             address = %wallet.address(),

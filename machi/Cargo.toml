@@ -16,23 +16,21 @@ ollama = []
 derive = ["machi-derive"]
 a2a = ["ra2a"]
 mcp = ["rmcp"]
-wallet = ["kobe", "kobe-eth", "alloy"]
+wallet = ["kobe", "kobe-evm", "alloy"]
 x402 = ["wallet", "dep:r402", "dep:r402-evm", "dep:r402-http", "dep:reqwest-middleware"]
-erc8004 = ["wallet", "dep:erc8004"]
 toolkit = []
 memory-sqlite = ["dep:rusqlite"]
 schema = ["dep:schemars"]
-full = ["openai", "ollama", "derive", "a2a", "mcp", "wallet", "x402", "erc8004", "toolkit", "memory-sqlite", "schema"]
+full = ["openai", "ollama", "derive", "a2a", "mcp", "wallet", "x402", "toolkit", "memory-sqlite", "schema"]
 
 [dependencies]
 alloy = { workspace = true, optional = true }
 async-stream.workspace = true
 async-trait.workspace = true
 base64.workspace = true
-erc8004 = { workspace = true, optional = true }
 futures.workspace = true
 kobe = { workspace = true, optional = true }
-kobe-eth = { workspace = true, optional = true }
+kobe-evm = { workspace = true, optional = true }
 machi-derive = { workspace = true, optional = true }
 ra2a = { workspace = true, optional = true }
 regex.workspace = true

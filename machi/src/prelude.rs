@@ -79,5 +79,3 @@ pub use crate::wallet::X402HttpClient;
 pub use crate::wallet::{
     DerivationStyle, DerivedAddress, EvmChain, EvmWallet, HdWallet, Wallet, WalletError,
 };
-#[cfg(feature = "erc8004")]
-pub use crate::wallet::{Erc8004Network, RegistrationFile};

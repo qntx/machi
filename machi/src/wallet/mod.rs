@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! kobe::Wallet (BIP39 mnemonic + seed, Zeroize-protected)
-//!   → EvmWallet::from_wallet() → kobe_eth derivation + alloy signer + JSON-RPC
+//!   → EvmWallet::from_wallet() → kobe_evm derivation + alloy signer + JSON-RPC
 //!     → Agent::wallet() → auto-registered tools for the AI agent
 //! ```
 //!
@@ -42,16 +42,14 @@ use async_trait::async_trait;
 mod error;
 pub mod evm;
 
-#[cfg(feature = "erc8004")]
-pub use erc8004::{Network as Erc8004Network, types::RegistrationFile};
 pub use error::WalletError;
 pub use evm::EvmWallet;
 #[cfg(feature = "x402")]
 pub use evm::x402::X402HttpClient;
 // Re-export kobe for direct use as the multi-chain HD wallet.
 pub use kobe::Wallet as HdWallet;
-// Re-export kobe-eth types used in the public API.
-pub use kobe_eth::{DerivationStyle, DerivedAddress};
+// Re-export kobe-evm types used in the public API.
+pub use kobe_evm::{DerivationStyle, DerivedAddress};
 
 /// Known EVM-compatible chains with their chain IDs and human-readable names.
 ///

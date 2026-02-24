@@ -1,6 +1,6 @@
-//! EVM wallet implementation composing [`kobe_eth`] and [`alloy`].
+//! EVM wallet implementation composing [`kobe_evm`] and [`alloy`].
 //!
-//! [`EvmWallet`] directly embeds [`kobe_eth::DerivedAddress`] (with its
+//! [`EvmWallet`] directly embeds [`kobe_evm::DerivedAddress`] (with its
 //! [`Zeroizing`] private key) alongside an [`alloy`] signer and provider,
 //! preserving the full derivation metadata and security chain.
 
@@ -21,17 +21,17 @@ use crate::wallet::{EvmChain, WalletError};
 /// An EVM wallet for AI agent blockchain interactions.
 ///
 /// Composes three layers:
-/// - **[`kobe_eth::DerivedAddress`]** — HD derivation metadata with
+/// - **[`kobe_evm::DerivedAddress`]** — HD derivation metadata with
 ///   [`Zeroizing`] private key (present when created via HD derivation)
 /// - **[`alloy::signers::local::PrivateKeySigner`]** — EVM transaction
 ///   and message signing
 /// - **[`alloy::providers::DynProvider`]** — JSON-RPC communication
 pub struct EvmWallet {
-    /// Derivation info from kobe-eth (present when created via HD derivation).
+    /// Derivation info from kobe-evm (present when created via HD derivation).
     ///
     /// Contains: derivation path, private key (Zeroizing), public key,
     /// and checksummed address. `None` when created from a raw private key.
-    derived: Option<kobe_eth::DerivedAddress>,
+    derived: Option<kobe_evm::DerivedAddress>,
 
     /// Alloy local signer for EVM signing operations.
     signer: PrivateKeySigner,
@@ -68,7 +68,7 @@ impl EvmWallet {
     /// Create a wallet from a BIP39 mnemonic phrase — derive + connect in one step.
     ///
     /// This is the **recommended** constructor for most users. It internally
-    /// creates a [`kobe::Wallet`], derives an Ethereum key via [`kobe_eth::Deriver`],
+    /// creates a [`kobe::Wallet`], derives an Ethereum key via [`kobe_evm::Deriver`],
     /// and connects to the RPC endpoint.
     ///
     /// # Arguments
@@ -103,7 +103,7 @@ impl EvmWallet {
     pub async fn from_mnemonic_with(
         mnemonic: &str,
         passphrase: Option<&str>,
-        style: kobe_eth::DerivationStyle,
+        style: kobe_evm::DerivationStyle,
         index: u32,
         rpc_url: &str,
     ) -> crate::Result<Self> {
@@ -125,7 +125,7 @@ impl EvmWallet {
         index: u32,
         rpc_url: &str,
     ) -> crate::Result<Self> {
-        let derived = kobe_eth::Deriver::new(wallet)
+        let derived = kobe_evm::Deriver::new(wallet)
             .derive(index)
             .map_err(|e| WalletError::derivation(format!("ETH derivation failed: {e}")))?;
         Self::from_derived(derived, rpc_url).await
@@ -135,24 +135,24 @@ impl EvmWallet {
     ///
     /// Supports Standard (`MetaMask`/Trezor), Ledger Live, and Ledger Legacy paths.
     ///
-    /// [`DerivationStyle`]: kobe_eth::DerivationStyle
+    /// [`DerivationStyle`]: kobe_evm::DerivationStyle
     ///
     /// # Errors
     ///
     /// Returns an error if derivation fails or RPC connection fails.
     pub async fn from_wallet_with(
         wallet: &kobe::Wallet,
-        style: kobe_eth::DerivationStyle,
+        style: kobe_evm::DerivationStyle,
         index: u32,
         rpc_url: &str,
     ) -> crate::Result<Self> {
-        let derived = kobe_eth::Deriver::new(wallet)
+        let derived = kobe_evm::Deriver::new(wallet)
             .derive_with(style, index)
             .map_err(|e| WalletError::derivation(format!("ETH derivation failed: {e}")))?;
         Self::from_derived(derived, rpc_url).await
     }
 
-    /// Create a wallet from a pre-derived [`kobe_eth::DerivedAddress`].
+    /// Create a wallet from a pre-derived [`kobe_evm::DerivedAddress`].
     ///
     /// Use this when you have already derived the key externally.
     ///
@@ -160,7 +160,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the signer cannot be created or RPC connection fails.
     pub async fn from_derived(
-        derived: kobe_eth::DerivedAddress,
+        derived: kobe_evm::DerivedAddress,
         rpc_url: &str,
     ) -> crate::Result<Self> {
         let signer: PrivateKeySigner = derived
@@ -172,13 +172,13 @@ impl EvmWallet {
         Self::build(Some(derived), signer, address, rpc_url).await
     }
 
-    /// Create a wallet from a [`kobe_eth::StandardWallet`] (non-HD, random key).
+    /// Create a wallet from a [`kobe_evm::StandardWallet`] (non-HD, random key).
     ///
     /// # Errors
     ///
     /// Returns an error if signer creation or RPC connection fails.
     pub async fn from_standard(
-        standard: &kobe_eth::StandardWallet,
+        standard: &kobe_evm::StandardWallet,
         rpc_url: &str,
     ) -> crate::Result<Self> {
         let signer: PrivateKeySigner = standard
@@ -210,7 +210,7 @@ impl EvmWallet {
 
     /// Internal builder shared by all constructors.
     async fn build(
-        derived: Option<kobe_eth::DerivedAddress>,
+        derived: Option<kobe_evm::DerivedAddress>,
         signer: PrivateKeySigner,
         address: String,
         rpc_url: &str,
@@ -312,9 +312,9 @@ impl EvmWallet {
         self.derived.as_ref().map(|d| d.path.as_str())
     }
 
-    /// Reference to the kobe-eth derivation result, if available.
+    /// Reference to the kobe-evm derivation result, if available.
     #[must_use]
-    pub const fn derived(&self) -> Option<&kobe_eth::DerivedAddress> {
+    pub const fn derived(&self) -> Option<&kobe_evm::DerivedAddress> {
         self.derived.as_ref()
     }
 }
@@ -625,33 +625,6 @@ impl EvmWallet {
 }
 
 impl EvmWallet {
-    /// Create an ERC-8004 client from this wallet's provider.
-    ///
-    /// Automatically configures registry addresses if the wallet's chain
-    /// is a known ERC-8004 deployment (Ethereum, Base, Polygon, etc.).
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// use machi::wallet::EvmWallet;
-    ///
-    /// # async fn example() -> machi::Result<()> {
-    /// let wallet = EvmWallet::from_private_key("0x...", "https://base-rpc.example.com").await?;
-    /// let client = wallet.erc8004_client();
-    /// let version = client.identity().unwrap().get_version().await;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[cfg(feature = "erc8004")]
-    #[must_use]
-    pub fn erc8004_client(&self) -> erc8004::Erc8004<&DynProvider<Ethereum>> {
-        let client = erc8004::Erc8004::new(self.provider());
-        match super::erc8004::network_from_chain_id(self.chain_id()) {
-            Some(network) => client.with_network(network),
-            None => client,
-        }
-    }
-
     /// Create an x402-enabled HTTP client from this wallet's signer.
     ///
     /// The returned client transparently handles HTTP 402 responses by

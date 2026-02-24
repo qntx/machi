@@ -29,10 +29,7 @@ pub use crate::audio::{
     TimestampGranularity, TranscriptionRequest, TranscriptionResponse, TranscriptionResponseFormat,
     TranscriptionSegment, TranscriptionWord, Voice,
 };
-pub use crate::callback::{
-    AgentHooks, BoxedAgentHooks, BoxedRunHooks, LogLevel, LoggingAgentHooks, LoggingRunHooks,
-    NoopAgentHooks, NoopRunHooks, RunContext, RunHooks, SharedAgentHooks, SharedRunHooks,
-};
+pub use crate::callback::{Hooks, LogLevel, LoggingHooks, NoopHooks, RunContext, SharedHooks};
 pub use crate::chat::{
     ChatProvider, ChatProviderExt, ChatRequest, ChatResponse, ResponseFormat, SharedChatProvider,
     ToolChoice,

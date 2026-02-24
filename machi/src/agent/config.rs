@@ -32,7 +32,6 @@ use futures::stream::Stream;
 use serde_json::Value;
 
 use super::result::{RunConfig, RunEvent, RunResult, UserInput};
-use crate::callback::SharedAgentHooks;
 use crate::chat::{ResponseFormat, SharedChatProvider};
 use crate::error::Result;
 use crate::guardrail::{InputGuardrail, OutputGuardrail};
@@ -257,9 +256,6 @@ pub struct Agent {
     /// enabling parallel execution via `futures::future::join_all`.
     pub(crate) managed_agents: Vec<Self>,
 
-    /// Optional per-agent lifecycle hooks.
-    pub(crate) hooks: Option<SharedAgentHooks>,
-
     /// Maximum number of reasoning steps before the runner aborts.
     pub(crate) max_steps: usize,
 
@@ -318,7 +314,6 @@ impl fmt::Debug for Agent {
                     .map(|a| &a.name)
                     .collect::<Vec<_>>(),
             )
-            .field("hooks", &self.hooks.is_some())
             .field("max_steps", &self.max_steps)
             .field("description", &self.description)
             .field("tool_policies", &self.tool_policies)
@@ -348,7 +343,6 @@ impl Agent {
             provider: None,
             tools: Vec::new(),
             managed_agents: Vec::new(),
-            hooks: None,
             max_steps: Self::DEFAULT_MAX_STEPS,
             tool_policies: HashMap::new(),
             output_schema: None,
@@ -413,13 +407,6 @@ impl Agent {
     #[must_use]
     pub fn managed_agents(mut self, agents: Vec<Self>) -> Self {
         self.managed_agents = agents;
-        self
-    }
-
-    /// Set per-agent lifecycle hooks.
-    #[must_use]
-    pub fn hooks(mut self, hooks: SharedAgentHooks) -> Self {
-        self.hooks = Some(hooks);
         self
     }
 

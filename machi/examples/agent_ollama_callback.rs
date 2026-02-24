@@ -1,6 +1,6 @@
 //! Agent with lifecycle callbacks example using Ollama.
 //!
-//! Demonstrates custom `AgentHooks` to observe the agent's
+//! Demonstrates custom [`Hooks`] to observe the agent's
 //! reasoning loop — start, LLM calls, tool invocations, and end.
 //!
 //! ```bash
@@ -20,28 +20,29 @@ use serde_json::Value;
 struct PrintHooks;
 
 #[async_trait]
-impl AgentHooks for PrintHooks {
-    async fn on_start(&self, context: &RunContext) {
-        println!("[hook] Agent started (step {})", context.step(),);
+impl Hooks for PrintHooks {
+    async fn on_agent_start(&self, context: &RunContext, agent_name: &str) {
+        println!("[hook] {agent_name} started (step {})", context.step());
     }
 
     async fn on_llm_start(
         &self,
         _context: &RunContext,
+        _agent_name: &str,
         _system: Option<&str>,
         _messages: &[Message],
     ) {
         println!("[hook] LLM call starting...");
     }
 
-    async fn on_llm_end(&self, _context: &RunContext, response: &ChatResponse) {
+    async fn on_llm_end(&self, _context: &RunContext, _agent_name: &str, response: &ChatResponse) {
         println!(
             "[hook] LLM call done — {} tokens",
             response.usage.map_or(0, |u| u.total_tokens),
         );
     }
 
-    async fn on_end(&self, _context: &RunContext, output: &Value) {
+    async fn on_agent_end(&self, _context: &RunContext, _agent_name: &str, output: &Value) {
         let text = output.as_str().unwrap_or("<structured>");
         println!(
             "[hook] Agent finished — output length: {} chars",
@@ -57,12 +58,11 @@ async fn main() -> Result<()> {
     let agent = Agent::new("assistant")
         .instructions("You are a helpful assistant. Keep answers concise.")
         .model("qwen3")
-        .provider(provider)
-        .hooks(Arc::new(PrintHooks));
+        .provider(provider);
 
-    let result = agent
-        .run("What is the speed of light?", RunConfig::default())
-        .await?;
+    let config = RunConfig::new().hooks(Arc::new(PrintHooks));
+
+    let result = agent.run("What is the speed of light?", config).await?;
 
     println!("\n{}", result.output);
 

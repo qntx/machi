@@ -12,7 +12,7 @@ use std::fmt;
 
 use serde_json::Value;
 
-use crate::callback::SharedRunHooks;
+use crate::callback::SharedHooks;
 use crate::chat::ChatResponse;
 use crate::guardrail::{
     InputGuardrail, InputGuardrailResult, OutputGuardrail, OutputGuardrailResult,
@@ -85,7 +85,7 @@ impl From<&ToolCall> for ToolCallRequest {
 #[derive(Clone, Default)]
 pub struct RunConfig {
     /// Global run-level lifecycle hooks.
-    pub hooks: Option<SharedRunHooks>,
+    pub hooks: Option<SharedHooks>,
 
     /// Session for message persistence across runs.
     pub session: Option<SharedSession>,
@@ -140,7 +140,7 @@ impl RunConfig {
 
     /// Set global run-level hooks.
     #[must_use]
-    pub fn hooks(mut self, hooks: SharedRunHooks) -> Self {
+    pub fn hooks(mut self, hooks: SharedHooks) -> Self {
         self.hooks = Some(hooks);
         self
     }

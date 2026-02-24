@@ -20,14 +20,13 @@ use tracing::{Instrument, debug, error, info, info_span, warn};
 
 use super::{
     config::Agent,
-    hook::HookPair,
     result::{
         NextStep, RunConfig, RunEvent, RunResult, StepInfo, ToolCallRecord, ToolCallRequest,
         UserInput,
     },
 };
 use crate::{
-    callback::{NoopRunHooks, RunContext, RunHooks},
+    callback::{Hooks, NoopHooks, RunContext},
     chat::{ChatProvider, ChatRequest, ChatResponse, ToolChoice},
     error::{AgentError, Error, Result},
     guardrail::{InputGuardrail, InputGuardrailResult, OutputGuardrail, OutputGuardrailResult},
@@ -190,7 +189,8 @@ impl<'a> RunState<'a> {
         &mut self,
         step: usize,
         response: ChatResponse,
-        hooks: &HookPair<'_>,
+        hooks: &dyn Hooks,
+        agent_name: &str,
         config: &RunConfig,
     ) -> Result<StepOutcome> {
         let next_step = Runner::classify_response(&response, self.structured_output);
@@ -215,7 +215,9 @@ impl<'a> RunState<'a> {
                 )
                 .await?;
 
-                hooks.agent_end(&self.context, &output_value).await;
+                hooks
+                    .on_agent_end(&self.context, agent_name, &output_value)
+                    .await;
                 if let Some(ref session) = config.session {
                     let to_save = vec![self.user_message.clone(), response.message.clone()];
                     let _ = session.add_messages(&to_save).await;
@@ -256,6 +258,7 @@ impl<'a> RunState<'a> {
                     self.agent,
                     &self.context,
                     hooks,
+                    agent_name,
                     &mut self.messages,
                     self.max_tool_concurrency,
                 )
@@ -305,6 +308,7 @@ impl<'a> RunState<'a> {
                         self.agent,
                         &self.context,
                         hooks,
+                        agent_name,
                         &mut self.messages,
                         self.max_tool_concurrency,
                     )
@@ -355,13 +359,12 @@ impl Runner {
 
     /// Core async loop for the blocking execution path.
     async fn run_inner(agent: &Agent, input: UserInput, config: RunConfig) -> Result<RunResult> {
-        let noop = NoopRunHooks;
-        let run_hooks: &dyn RunHooks = config.hooks.as_deref().unwrap_or(&noop);
-        let hooks = HookPair::new(run_hooks, agent.hooks.as_deref(), &agent.name);
+        let noop = NoopHooks;
+        let hooks: &dyn Hooks = config.hooks.as_deref().unwrap_or(&noop);
 
         let mut state = RunState::init(agent, input, &config).await?;
 
-        hooks.agent_start(&state.context).await;
+        hooks.on_agent_start(&state.context, &agent.name).await;
 
         for step in 1..=state.max_steps {
             state.context.advance_step();
@@ -370,7 +373,12 @@ impl Runner {
             let request = state.build_request();
 
             hooks
-                .llm_start(&state.context, state.system_ref(), &state.messages)
+                .on_llm_start(
+                    &state.context,
+                    &agent.name,
+                    state.system_ref(),
+                    &state.messages,
+                )
                 .await;
 
             // First step: run parallel guardrails alongside the LLM call.
@@ -395,10 +403,15 @@ impl Runner {
                 e
             })?;
 
-            hooks.llm_end(&state.context, &response).await;
+            hooks
+                .on_llm_end(&state.context, &agent.name, &response)
+                .await;
             state.accumulate_usage(&response);
 
-            match state.process_step(step, response, &hooks, &config).await? {
+            match state
+                .process_step(step, response, hooks, &agent.name, &config)
+                .await?
+            {
                 StepOutcome::Done(result) => return Ok(result),
                 StepOutcome::Continue => {}
             }
@@ -407,7 +420,7 @@ impl Runner {
         let err = Error::from(AgentError::max_steps(state.max_steps));
         error!(error = %err, agent = %agent.name, max_steps = state.max_steps, "Max steps exceeded");
         tracing::Span::current().record("error", tracing::field::display(&err));
-        hooks.error(&state.context, &err).await;
+        hooks.on_error(&state.context, &agent.name, &err).await;
         Err(err)
     }
 
@@ -433,9 +446,8 @@ impl Runner {
         config: RunConfig,
     ) -> impl Stream<Item = Result<RunEvent>> + Send + '_ {
         async_stream::try_stream! {
-            let noop = NoopRunHooks;
-            let run_hooks: &dyn RunHooks = config.hooks.as_deref().unwrap_or(&noop);
-            let hooks = HookPair::new(run_hooks, agent.hooks.as_deref(), &agent.name);
+            let noop = NoopHooks;
+            let hooks: &dyn Hooks = config.hooks.as_deref().unwrap_or(&noop);
 
             let mut state = RunState::init(agent, input, &config).await?;
 
@@ -447,7 +459,7 @@ impl Runner {
                 "Agent streamed run started",
             );
 
-            hooks.agent_start(&state.context).await;
+            hooks.on_agent_start(&state.context, &agent.name).await;
             yield RunEvent::RunStarted { agent_name: agent.name.clone() };
 
             for step in 1..=state.max_steps {
@@ -459,7 +471,7 @@ impl Runner {
                 let request = state.build_stream_request();
 
                 hooks
-                    .llm_start(&state.context, state.system_ref(), &state.messages)
+                    .on_llm_start(&state.context, &agent.name, state.system_ref(), &state.messages)
                     .await;
 
                 // Parallel guardrails run sequentially here (cannot fork a try_stream).
@@ -507,10 +519,10 @@ impl Runner {
 
                 let response = aggregator.into_chat_response();
 
-                hooks.llm_end(&state.context, &response).await;
+                hooks.on_llm_end(&state.context, &agent.name, &response).await;
                 state.accumulate_usage(&response);
 
-                match state.process_step(step, response, &hooks, &config).await? {
+                match state.process_step(step, response, hooks, &agent.name, &config).await? {
                     StepOutcome::Done(result) => {
                         if let Some(last_step) = result.step_history.last() {
                             yield RunEvent::StepCompleted {
@@ -538,7 +550,7 @@ impl Runner {
 
             let err = Error::from(AgentError::max_steps(state.max_steps));
             error!(error = %err, agent = %agent.name, max_steps = state.max_steps, "Max steps exceeded");
-            hooks.error(&state.context, &err).await;
+            hooks.on_error(&state.context, &agent.name, &err).await;
             Err(err)?;
         }
     }
@@ -647,7 +659,8 @@ impl Runner {
         calls: &[ToolCallRequest],
         agent: &Agent,
         context: &RunContext,
-        hooks: &HookPair<'_>,
+        hooks: &dyn Hooks,
+        agent_name: &str,
         messages: &mut Vec<Message>,
         max_concurrency: Option<usize>,
     ) -> Result<Vec<ToolCallRecord>> {
@@ -657,7 +670,9 @@ impl Runner {
         for chunk in calls.chunks(concurrency) {
             let mut futs = Vec::with_capacity(chunk.len());
             for call in chunk {
-                futs.push(Self::execute_single_tool(call, agent, context, hooks));
+                futs.push(Self::execute_single_tool(
+                    call, agent, context, hooks, agent_name,
+                ));
             }
             records.extend(futures::future::join_all(futs).await);
         }
@@ -674,7 +689,8 @@ impl Runner {
         call: &ToolCallRequest,
         agent: &Agent,
         context: &RunContext,
-        hooks: &HookPair<'_>,
+        hooks: &dyn Hooks,
+        agent_name: &str,
     ) -> ToolCallRecord {
         let tool_span = info_span!(
             "tool",
@@ -687,7 +703,7 @@ impl Runner {
         );
 
         async {
-            hooks.tool_start(context, &call.name).await;
+            hooks.on_tool_start(context, agent_name, &call.name).await;
 
             let (result_str, success, sub_usage) =
                 if let Some(sub) = agent.managed_agents.iter().find(|a| a.name == call.name) {
@@ -710,7 +726,9 @@ impl Runner {
             if !success {
                 current.record("error", result_str.as_str());
             }
-            hooks.tool_end(context, &call.name, &result_str).await;
+            hooks
+                .on_tool_end(context, agent_name, &call.name, &result_str)
+                .await;
 
             ToolCallRecord {
                 id: call.id.clone(),

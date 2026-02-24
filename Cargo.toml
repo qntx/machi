@@ -1,5 +1,5 @@
 [workspace]
-members = ["machi", "machi-derive"]
+members = ["machi", "machi-auto", "machi-derive"]
 default-members = ["machi"]
 exclude = ["3rdparty"]
 resolver = "3"
@@ -9,12 +9,24 @@ version = "0.7.3"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/machi"
+description = "A Web3-native AI Agent Framework"
+keywords = ["ai", "agent", "llm", "openai", "ollama"]
+categories = ["api-bindings", "asynchronous"]
 
 [workspace.dependencies]
 machi = { version = "0.7", path = "machi" }
 machi-derive = { version = "0.7", path = "machi-derive" }
 
-alloy = { version = "1", default-features = false, features = ["signers", "signer-local", "provider-http", "network", "consensus", "sol-types", "rpc-types", "k256"] }
+alloy = { version = "1", default-features = false, features = [
+    "signers",
+    "signer-local",
+    "provider-http",
+    "network",
+    "consensus",
+    "sol-types",
+    "rpc-types",
+    "k256",
+] }
 async-stream = "0.3"
 async-trait = "0.1"
 base64 = "0.22"
@@ -22,17 +34,26 @@ convert_case = "0.11.0"
 darling = "0.23.0"
 futures = "0.3"
 kobe = { version = "0.5", default-features = false, features = ["std", "rand"] }
-kobe-evm = { version = "0.5", default-features = false, features = ["std", "rand"] }
+kobe-evm = { version = "0.5", default-features = false, features = [
+    "std",
+    "rand",
+] }
 proc-macro2 = "1.0"
 quote = "1.0"
 ra2a = "0.4"
 regex = "1.11"
 reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }
 reqwest-middleware = "0.5"
-rmcp = { version = "0.16", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
+rmcp = { version = "0.16", features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+] }
 r402 = { version = "0.12", default-features = false }
 r402-evm = { version = "0.12", default-features = false, features = ["client"] }
-r402-http = { version = "0.12", default-features = false, features = ["client"] }
+r402-http = { version = "0.12", default-features = false, features = [
+    "client",
+] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }

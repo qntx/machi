@@ -1,0 +1,114 @@
+name: CD
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+          - {
+              target: aarch64-unknown-linux-gnu,
+              os: ubuntu-latest,
+              cross: true,
+            }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+          - { target: aarch64-pc-windows-msvc, os: windows-latest }
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: "${{ matrix.target }}" }
+
+      # Cross-compile for Linux ARM64 on the x86_64 runner.
+      # The Azure apt mirror lacks arm64 packages (actions/runner-images#10901),
+      # so we add ports.ubuntu.com as a separate deb822 source.
+      - name: Setup cross-compilation (Linux ARM64)
+        if: matrix.cross
+        run: |
+          sudo sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
+          printf '%s\n' \
+            "Types: deb" \
+            "URIs: http://ports.ubuntu.com/ubuntu-ports/" \
+            "Suites: noble noble-updates noble-security" \
+            "Components: main restricted universe multiverse" \
+            "Architectures: arm64" \
+            "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" \
+            | sudo tee /etc/apt/sources.list.d/arm64-cross.sources
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - run: cargo build --release --target ${{ matrix.target }} -p machi-auto
+
+      - name: Package
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_NAME" == v* ]] || ver="0.0.0-dev"
+          target="${{ matrix.target }}"
+          staging="machi-$ver-$target"
+          bin="machi"; [[ "$target" == *windows* ]] && bin="$bin.exe"
+
+          mkdir "$staging"
+          cp "target/$target/release/$bin" LICENSE-MIT LICENSE-APACHE "$staging/"
+
+          if [[ "$target" == *windows* ]]; then
+            (cd "$staging" && 7z a "../$staging.zip" .)
+            asset="$staging.zip"
+          else
+            tar czf "$staging.tar.gz" -C "$staging" .
+            asset="$staging.tar.gz"
+          fi
+
+          # SHA-256 checksum
+          if command -v sha256sum &>/dev/null; then sha256sum "$asset" > "$asset.sha256"
+          else shasum -a 256 "$asset" > "$asset.sha256"; fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            machi-*.*
+            !machi-*/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v6
+        with: { fetch-depth: 0 }
+
+      - uses: actions/download-artifact@v7
+        with: { merge-multiple: true }
+
+      - name: Generate changelog
+        id: cliff
+        uses: orhun/git-cliff-action@v4
+        with: { args: "--latest --strip header" }
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.cliff.outputs.content }}
+          files: |
+            machi-*.tar.gz
+            machi-*.zip
+            machi-*.sha256

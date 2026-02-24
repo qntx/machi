@@ -2576,6 +2576,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "machi-auto"
+version = "0.7.3"
+
+[[package]]
 name = "machi-derive"
 version = "0.7.3"
 dependencies = [

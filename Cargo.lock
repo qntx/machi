@@ -3172,9 +3172,9 @@ dependencies = [
 
 [[package]]
 name = "ra2a"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb6bbc276997f89a9f3b2b3b4ef0ae39a5ee463654cb42cae1b1ce94542b6e92"
+checksum = "8ae7e69202535e36a2f356e2e340067bf938b1cba7755dc71c2d6a6960164374"
 dependencies = [
  "async-stream",
  "async-trait",

@@ -35,8 +35,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use ra2a::client::{A2AClient, A2AClientBuilder, Client, ClientEvent};
-use ra2a::types::{AgentCard, Message as A2aMessage};
+use ra2a::client::{Client, JsonRpcTransport, TransportConfig};
+use ra2a::types::{AgentCard, Event, Message as A2aMessage, MessageSendParams};
 use serde_json::Value;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
@@ -62,8 +62,7 @@ use crate::tool::{BoxedTool, DynTool, ToolDefinition};
 /// ```
 #[derive(Debug)]
 pub struct A2aAgentBuilder {
-    url: String,
-    inner: A2AClientBuilder,
+    config: TransportConfig,
     name: Option<String>,
 }
 
@@ -71,28 +70,43 @@ impl A2aAgentBuilder {
     /// Set a Bearer authentication token.
     #[must_use]
     pub fn bearer_auth(mut self, token: impl Into<String>) -> Self {
-        self.inner = self.inner.bearer_auth(token);
+        let value = format!("Bearer {}", token.into());
+        if let Ok(v) = value.parse() {
+            self.config.headers.insert(reqwest::header::AUTHORIZATION, v);
+        }
         self
     }
 
     /// Add a custom HTTP header.
     #[must_use]
     pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
-        self.inner = self.inner.header(name, value);
+        let name_str = name.into();
+        if let (Ok(k), Ok(v)) = (
+            name_str.parse::<reqwest::header::HeaderName>(),
+            value.into().parse::<reqwest::header::HeaderValue>(),
+        ) {
+            self.config.headers.insert(k, v);
+        }
         self
     }
 
     /// Set an API key header.
     #[must_use]
     pub fn api_key(mut self, header_name: impl Into<String>, key: impl Into<String>) -> Self {
-        self.inner = self.inner.api_key(header_name, key);
+        let name_str = header_name.into();
+        if let (Ok(k), Ok(v)) = (
+            name_str.parse::<reqwest::header::HeaderName>(),
+            key.into().parse::<reqwest::header::HeaderValue>(),
+        ) {
+            self.config.headers.insert(k, v);
+        }
         self
     }
 
     /// Set the request timeout in seconds.
     #[must_use]
     pub fn timeout(mut self, secs: u64) -> Self {
-        self.inner = self.inner.timeout(secs);
+        self.config.timeout_secs = secs;
         self
     }
 
@@ -109,20 +123,21 @@ impl A2aAgentBuilder {
     ///
     /// Returns an error if the A2A client fails to build or the agent card cannot be fetched.
     pub async fn connect(self) -> crate::Result<A2aAgent> {
-        info!(url = %self.url, "Connecting to A2A agent");
+        let url = self.config.base_url.clone();
+        info!(url = %url, "Connecting to A2A agent");
 
-        let client = self.inner.build().map_err(|e| {
+        let transport = JsonRpcTransport::new(self.config).map_err(|e| {
             crate::error::AgentError::runtime(format!(
-                "Failed to build A2A client for '{}': {e}",
-                self.url
+                "Failed to build A2A transport for '{url}': {e}",
             ))
         })?;
+
+        let client = Client::new(Box::new(transport)).with_base_url(&url);
 
         // Fetch agent card to discover capabilities.
         let card = client.get_agent_card().await.map_err(|e| {
             crate::error::AgentError::runtime(format!(
-                "Failed to fetch agent card from '{}': {e}",
-                self.url,
+                "Failed to fetch agent card from '{url}': {e}",
             ))
         })?;
 
@@ -143,7 +158,7 @@ impl A2aAgentBuilder {
 
 /// A connection to a remote A2A agent.
 ///
-/// `A2aAgent` wraps an [`A2AClient`](ra2a::client::A2AClient) and provides
+/// `A2aAgent` wraps an [`Client`](ra2a::client::Client) and provides
 /// methods to send messages and convert the remote agent into a machi
 /// [`BoxedTool`] for use with [`Agent`](crate::agent::Agent).
 ///
@@ -162,7 +177,7 @@ impl A2aAgentBuilder {
 /// ```
 pub struct A2aAgent {
     /// The underlying ra2a client.
-    client: Arc<A2AClient>,
+    client: Arc<Client>,
     /// Cached agent card.
     card: Arc<RwLock<AgentCard>>,
     /// Human-readable name for this agent.
@@ -194,11 +209,8 @@ impl A2aAgent {
     /// ```
     #[allow(clippy::new_ret_no_self)]
     pub fn new(url: impl Into<String>) -> A2aAgentBuilder {
-        let url = url.into();
-        let inner = A2AClientBuilder::new(&url);
         A2aAgentBuilder {
-            url,
-            inner,
+            config: TransportConfig::new(url),
             name: None,
         }
     }
@@ -249,53 +261,83 @@ impl A2aAgent {
     ///
     /// Returns an error if the message fails to send or the response stream encounters an error.
     pub async fn send_message(&self, message: A2aMessage) -> Result<String, ToolError> {
-        let mut stream = self.client.send_message(message).await.map_err(|e| {
-            ToolError::Execution(format!("A2A agent '{}' send failed: {e}", self.name))
-        })?;
+        let params = MessageSendParams::new(message);
+        let mut stream = self
+            .client
+            .send_message_stream(&params)
+            .await
+            .map_err(|e| {
+                ToolError::Execution(format!("A2A agent '{}' send failed: {e}", self.name))
+            })?;
 
         let mut output = String::new();
         while let Some(result) = stream.next().await {
             let event = result.map_err(|e| {
                 ToolError::Execution(format!("A2A agent '{}' stream error: {e}", self.name))
             })?;
-            match event {
-                ClientEvent::Message(msg) => {
-                    if let Some(text) = msg.text_content() {
+            Self::collect_event_text(&event, &mut output);
+        }
+
+        debug!(agent = %self.name, len = output.len(), "A2A response received");
+        Ok(output)
+    }
+
+    /// Extract text content from an [`Event`] and append it to the output buffer.
+    fn collect_event_text(event: &Event, output: &mut String) {
+        match event {
+            Event::Message(msg) => {
+                if let Some(text) = msg.text_content() {
+                    if !output.is_empty() {
+                        output.push('\n');
+                    }
+                    output.push_str(&text);
+                }
+            }
+            Event::StatusUpdate(update) => {
+                // Extract text from the status message if available.
+                if let Some(ref msg) = update.status.message
+                    && let Some(text) = msg.text_content()
+                {
+                    if !output.is_empty() {
+                        output.push('\n');
+                    }
+                    output.push_str(&text);
+                }
+            }
+            Event::ArtifactUpdate(update) => {
+                // Extract text from artifact parts.
+                for part in &update.artifact.parts {
+                    if let Some(text) = part.as_text() {
                         if !output.is_empty() {
                             output.push('\n');
                         }
-                        output.push_str(&text);
+                        output.push_str(text);
                     }
                 }
-                ClientEvent::TaskUpdate { task, .. } => {
-                    // Extract text from the task status message if available.
-                    if let Some(ref msg) = task.status.message
-                        && let Some(text) = msg.text_content()
-                    {
-                        if !output.is_empty() {
-                            output.push('\n');
-                        }
-                        output.push_str(&text);
+            }
+            Event::Task(task) => {
+                // Extract text from the task status message.
+                if let Some(ref msg) = task.status.message
+                    && let Some(text) = msg.text_content()
+                {
+                    if !output.is_empty() {
+                        output.push('\n');
                     }
-                    // Also extract text from artifacts.
-                    if let Some(ref artifacts) = task.artifacts {
-                        for artifact in artifacts {
-                            for part in &artifact.parts {
-                                if let Some(text) = part.as_text() {
-                                    if !output.is_empty() {
-                                        output.push('\n');
-                                    }
-                                    output.push_str(text);
-                                }
+                    output.push_str(&text);
+                }
+                // Also extract text from task artifacts.
+                for artifact in &task.artifacts {
+                    for part in &artifact.parts {
+                        if let Some(text) = part.as_text() {
+                            if !output.is_empty() {
+                                output.push('\n');
                             }
+                            output.push_str(text);
                         }
                     }
                 }
             }
         }
-
-        debug!(agent = %self.name, len = output.len(), "A2A response received");
-        Ok(output)
     }
 
     /// Convert this A2A agent into a [`BoxedTool`] for use with a machi agent.
@@ -310,9 +352,9 @@ impl A2aAgent {
         })
     }
 
-    /// Get a reference to the underlying [`A2AClient`] for advanced usage.
+    /// Get a reference to the underlying [`Client`](ra2a::client::Client) for advanced usage.
     #[must_use]
-    pub fn client(&self) -> &A2AClient {
+    pub fn client(&self) -> &Client {
         &self.client
     }
 }

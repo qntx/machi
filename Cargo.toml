@@ -40,7 +40,7 @@ kobe-evm = { version = "0.5", default-features = false, features = [
 ] }
 proc-macro2 = "1.0"
 quote = "1.0"
-ra2a = "0.4"
+ra2a = "0.8"
 regex = "1.11"
 reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }
 reqwest-middleware = "0.5"

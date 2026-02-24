@@ -1,7 +1,7 @@
 //! `OpenAI` Embedding API implementation.
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::client::OpenAI;
 use crate::embedding::{
@@ -9,37 +9,20 @@ use crate::embedding::{
 };
 use crate::error::{LlmError, Result};
 
-/// `OpenAI` embedding request.
-#[derive(Debug, Clone, Serialize)]
-struct OpenAIEmbeddingRequest {
-    pub model: String,
-    pub input: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encoding_format: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dimensions: Option<u32>,
-}
-
-/// `OpenAI` embedding data.
+/// `OpenAI` embedding data (kept because the field is `embedding`, not `vector`).
 #[derive(Debug, Clone, Deserialize)]
 struct OpenAIEmbeddingData {
     pub embedding: Vec<f32>,
     pub index: usize,
 }
 
-/// `OpenAI` embedding response.
+/// `OpenAI` embedding response wrapper.
 #[derive(Debug, Clone, Deserialize)]
 struct OpenAIEmbeddingResponse {
     pub data: Vec<OpenAIEmbeddingData>,
     pub model: String,
-    pub usage: Option<OpenAIEmbeddingUsage>,
-}
-
-/// `OpenAI` embedding usage statistics.
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAIEmbeddingUsage {
-    pub prompt_tokens: u32,
-    pub total_tokens: u32,
+    /// Deserialized directly into the core [`EmbeddingUsage`] type.
+    pub usage: Option<EmbeddingUsage>,
 }
 
 /// Default embedding model for `OpenAI`.
@@ -52,14 +35,8 @@ impl EmbeddingProvider for OpenAI {
     async fn embed(&self, request: &EmbeddingRequest) -> Result<EmbeddingResponse> {
         let url = self.embeddings_url();
 
-        let body = OpenAIEmbeddingRequest {
-            model: request.model.clone(),
-            input: request.input.clone(),
-            encoding_format: request.encoding_format.map(|f| f.as_str().to_owned()),
-            dimensions: request.dimensions,
-        };
-
-        let response = self.build_request(&url).json(&body).send().await?;
+        // EmbeddingRequest serializes directly to the OpenAI-expected format.
+        let response = self.build_request(&url).json(request).send().await?;
 
         let status = response.status();
         if !status.is_success() {
@@ -82,10 +59,7 @@ impl EmbeddingProvider for OpenAI {
             .map(|d| Embedding::new(d.embedding, d.index))
             .collect();
 
-        let usage = parsed.usage.map(|u| EmbeddingUsage {
-            prompt_tokens: u.prompt_tokens,
-            total_tokens: u.total_tokens,
-        });
+        let usage = parsed.usage;
 
         Ok(EmbeddingResponse {
             embeddings,

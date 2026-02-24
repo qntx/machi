@@ -16,11 +16,13 @@ use crate::tool::ToolDefinition;
 
 /// Ollama chat completion request.
 #[derive(Debug, Clone, Serialize)]
-pub struct OllamaChatRequest {
+pub(super) struct OllamaChatRequest {
     pub model: String,
     pub messages: Vec<OllamaMessage>,
+    /// Uses [`ToolDefinition`] directly — its custom `Serialize` already
+    /// produces the `{"type":"function","function":{...}}` format Ollama expects.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Vec<OllamaTool>>,
+    pub tools: Option<Vec<ToolDefinition>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,7 +58,7 @@ pub struct OllamaOptions {
 
 /// Ollama message format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaMessage {
+pub(super) struct OllamaMessage {
     pub role: String,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -65,31 +67,15 @@ pub struct OllamaMessage {
     pub tool_calls: Option<Vec<OllamaToolCall>>,
 }
 
-/// Ollama tool definition.
+/// Ollama tool call (response-side only; different from core `ToolCall`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaTool {
-    #[serde(rename = "type")]
-    pub tool_type: String,
-    pub function: OllamaFunction,
-}
-
-/// Ollama function definition.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaFunction {
-    pub name: String,
-    pub description: String,
-    pub parameters: Value,
-}
-
-/// Ollama tool call.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaToolCall {
+pub(super) struct OllamaToolCall {
     pub function: OllamaFunctionCall,
 }
 
-/// Ollama function call details.
+/// Ollama function call details (arguments as `Value`, not `String`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaFunctionCall {
+pub(super) struct OllamaFunctionCall {
     pub name: String,
     pub arguments: Value,
 }
@@ -176,7 +162,7 @@ impl Ollama {
     }
 
     /// Convert Message to Ollama format (async version for URL image support).
-    pub(crate) async fn convert_message_async(
+    pub(super) async fn convert_message_async(
         client: &Client,
         msg: &Message,
     ) -> Result<OllamaMessage> {
@@ -274,30 +260,16 @@ impl Ollama {
         Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
     }
 
-    /// Convert `ToolDefinition` to Ollama format.
-    pub(crate) fn convert_tool(tool: &ToolDefinition) -> OllamaTool {
-        OllamaTool {
-            tool_type: "function".to_owned(),
-            function: OllamaFunction {
-                name: tool.name.clone(),
-                description: tool.description.clone(),
-                parameters: tool.parameters.clone(),
-            },
-        }
-    }
-
     /// Build the request body (async for URL image support).
-    pub(crate) async fn build_body(&self, request: &ChatRequest) -> Result<OllamaChatRequest> {
+    pub(super) async fn build_body(&self, request: &ChatRequest) -> Result<OllamaChatRequest> {
         let mut messages = Vec::with_capacity(request.messages.len());
         for msg in &request.messages {
             let converted = Self::convert_message_async(&self.client, msg).await?;
             messages.push(converted);
         }
 
-        let tools = request
-            .tools
-            .as_ref()
-            .map(|t| t.iter().map(Self::convert_tool).collect());
+        // ToolDefinition serializes directly to the format Ollama expects.
+        let tools = request.tools.clone();
 
         let model = if request.model.is_empty() {
             self.config.model.clone()

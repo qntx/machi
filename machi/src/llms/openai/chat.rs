@@ -7,13 +7,13 @@ use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use tracing::{Instrument, debug, error, info, info_span};
 
-use super::client::{OpenAI, OpenAIToolCall, StreamOptions};
+use super::client::OpenAI;
 use super::stream::parse_sse_events;
 use crate::chat::ChatProvider;
 use crate::chat::{ChatRequest, ChatResponse};
 use crate::error::Result;
 use crate::llms::LlmError;
-use crate::message::{Content, Role, ToolCall as MsgToolCall};
+use crate::message::{Content, Role, ToolCall};
 use crate::stream::{StopReason, StreamChunk};
 use crate::usage::Usage;
 
@@ -44,7 +44,8 @@ struct OpenAIResponseMessage {
     /// Refusal message if the model declined to respond.
     #[serde(default)]
     pub refusal: Option<String>,
-    pub tool_calls: Option<Vec<OpenAIToolCall>>,
+    /// Tool calls deserialized directly into the core [`ToolCall`] type.
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 impl OpenAI {
@@ -64,13 +65,6 @@ impl OpenAI {
             _ => StopReason::Stop,
         };
 
-        let tool_calls = choice.message.tool_calls.map(|calls| {
-            calls
-                .into_iter()
-                .map(|tc| MsgToolCall::function(tc.id, tc.function.name, tc.function.arguments))
-                .collect()
-        });
-
         let content = choice.message.content.map(Content::Text);
 
         let message = crate::message::Message {
@@ -78,7 +72,7 @@ impl OpenAI {
             content,
             refusal: choice.message.refusal,
             annotations: Vec::new(),
-            tool_calls,
+            tool_calls: choice.message.tool_calls,
             tool_call_id: None,
             name: None,
             reasoning_content: None,
@@ -115,7 +109,7 @@ impl ChatProvider for OpenAI {
 
         async {
             let url = self.chat_url();
-            let body = self.build_body(request);
+            let body = self.build_chat_body(request, false)?;
 
             debug!(model = %request.model, messages = request.messages.len(), "Sending OpenAI chat request");
 
@@ -178,11 +172,7 @@ impl ChatProvider for OpenAI {
         );
 
         let url = self.chat_url();
-        let mut body = self.build_body(request);
-        body.stream = true;
-        body.stream_options = Some(StreamOptions {
-            include_usage: true,
-        });
+        let body = self.build_chat_body(request, true)?;
 
         let response = self.build_request(&url).json(&body).send().await?;
 

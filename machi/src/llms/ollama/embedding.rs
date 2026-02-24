@@ -1,7 +1,7 @@
 //! Ollama Embedding API implementation.
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::client::Ollama;
 use crate::embedding::{
@@ -11,13 +11,6 @@ use crate::error::{LlmError, Result};
 
 /// Default embedding model for Ollama.
 const DEFAULT_EMBEDDING_MODEL: &str = "nomic-embed-text";
-
-/// Ollama embedding request.
-#[derive(Debug, Clone, Serialize)]
-struct OllamaEmbeddingRequest {
-    model: String,
-    input: Vec<String>,
-}
 
 /// Ollama embedding response.
 #[derive(Debug, Clone, Deserialize)]
@@ -32,12 +25,8 @@ impl EmbeddingProvider for Ollama {
     async fn embed(&self, request: &EmbeddingRequest) -> Result<EmbeddingResponse> {
         let url = self.embeddings_url();
 
-        let body = OllamaEmbeddingRequest {
-            model: request.model.clone(),
-            input: request.input.clone(),
-        };
-
-        let response = self.client().post(&url).json(&body).send().await?;
+        // EmbeddingRequest serializes directly; optional fields are skipped when None.
+        let response = self.client().post(&url).json(request).send().await?;
 
         let status = response.status();
         if !status.is_success() {

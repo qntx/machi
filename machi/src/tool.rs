@@ -382,9 +382,6 @@ pub trait ConfirmationHandler: Send + Sync {
     async fn confirm(&self, request: &ToolConfirmationRequest) -> ToolConfirmationResponse;
 }
 
-/// A boxed confirmation handler for dynamic dispatch.
-pub type BoxedConfirmationHandler = Box<dyn ConfirmationHandler>;
-
 /// A shared confirmation handler for use across cloneable contexts.
 pub type SharedConfirmationHandler = std::sync::Arc<dyn ConfirmationHandler>;
 

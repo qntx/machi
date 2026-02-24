@@ -1,78 +1,31 @@
-//! Prelude module for convenient imports.
-//!
-//! Re-exports the most commonly used types and traits so you can get
-//! started with a single `use` statement.
+//! Prelude module — core traits and types for quick setup.
 //!
 //! ```rust
 //! use machi::prelude::*;
-//!
-//! let request = ChatRequest::new("gpt-4o")
-//!     .system("You are helpful.")
-//!     .user("Hello!");
-//!
-//! let agent = Agent::new("assistant")
-//!     .instructions("You are helpful.")
-//!     .model("gpt-4o");
 //! ```
 
 #[cfg(feature = "derive")]
 pub use machi_derive::tool;
 
-#[cfg(feature = "a2a")]
-pub use crate::a2a::{A2aAgent, A2aAgentBuilder};
 pub use crate::agent::{
-    Agent, AgentError, Instructions, OutputSchema, RunConfig, RunEvent, RunResult, Runner,
-    StepInfo, ToolCallRecord, UserInput,
+    Agent, AgentError, RunConfig, RunEvent, RunResult, Runner, StepInfo, ToolCallRecord, UserInput,
 };
-pub use crate::audio::{
-    AudioFormat, SpeechRequest, SpeechResponse, SpeechToTextProvider, TextToSpeechProvider,
-    TimestampGranularity, TranscriptionRequest, TranscriptionResponse, TranscriptionResponseFormat,
-    TranscriptionSegment, TranscriptionWord, Voice,
-};
-pub use crate::callback::{Hooks, LogLevel, LoggingHooks, NoopHooks, RunContext, SharedHooks};
 pub use crate::chat::{
-    ChatProvider, ChatProviderExt, ChatRequest, ChatResponse, ResponseFormat, SharedChatProvider,
-    ToolChoice,
-};
-pub use crate::embedding::{
-    Embedding, EmbeddingProvider, EmbeddingRequest, EmbeddingResponse, EmbeddingUsage,
-    EncodingFormat,
+    ChatProvider, ChatRequest, ChatResponse, ResponseFormat, SharedChatProvider,
 };
 pub use crate::error::{Error, Result};
 pub use crate::guardrail::{
-    GuardrailOutput, InputGuardrail, InputGuardrailCheck, InputGuardrailResult, OutputGuardrail,
-    OutputGuardrailCheck, OutputGuardrailResult,
+    GuardrailOutput, InputGuardrail, InputGuardrailCheck, OutputGuardrail, OutputGuardrailCheck,
 };
-pub use crate::llms::LlmError;
+pub use crate::hooks::{Hooks, LoggingHooks, NoopHooks, RunContext, SharedHooks};
 #[cfg(feature = "ollama")]
 pub use crate::llms::{Ollama, OllamaConfig};
 #[cfg(feature = "openai")]
 pub use crate::llms::{OpenAI, OpenAIConfig};
-#[cfg(feature = "mcp")]
-pub use crate::mcp::{HttpBuilder, McpServer, StdioBuilder};
-#[cfg(feature = "memory-sqlite")]
-pub use crate::memory::SqliteSession;
-pub use crate::memory::{BoxedSession, InMemorySession, MemoryError, Session, SharedSession};
-pub use crate::message::{
-    Annotation, Content, ContentPart, FunctionCall, ImageDetail, ImageMime, InputAudio, Message,
-    Role, ThinkingBlock, ToolCall,
-};
-pub use crate::stream::{StopReason, StreamAggregator, StreamChunk};
+pub use crate::message::{ContentPart, Message, Role};
+pub use crate::stream::{StopReason, StreamChunk};
 pub use crate::tool::{
-    AlwaysDenyHandler, AutoApproveHandler, BoxedConfirmationHandler, BoxedTool,
-    ConfirmationHandler, DynTool, SharedConfirmationHandler, Tool, ToolCallResult,
-    ToolConfirmationRequest, ToolConfirmationResponse, ToolDefinition, ToolError,
-    ToolExecutionPolicy, ToolResult,
-};
-#[cfg(feature = "toolkit")]
-pub use crate::tools::{
-    BingProvider, BraveProvider, DuckDuckGoProvider, EditFileTool, ExecTool, ListDirTool,
-    ReadFileTool, SearchProvider, SearxngProvider, TavilyProvider, WebSearchTool, WriteFileTool,
+    BoxedTool, ConfirmationHandler, DynTool, Tool, ToolConfirmationRequest,
+    ToolConfirmationResponse, ToolDefinition, ToolError, ToolExecutionPolicy, ToolResult,
 };
 pub use crate::usage::Usage;
-#[cfg(feature = "x402")]
-pub use crate::wallet::X402HttpClient;
-#[cfg(feature = "wallet")]
-pub use crate::wallet::{
-    DerivationStyle, DerivedAddress, EvmChain, EvmWallet, HdWallet, Wallet, WalletError,
-};

@@ -1,4 +1,4 @@
-//! Hook context types for callback lifecycle events.
+//! Hook context types for lifecycle events.
 //!
 //! Provides [`RunContext`] which carries shared state across all hook invocations
 //! during an agent run, including cumulative token usage, step tracking, and
@@ -26,7 +26,7 @@ use crate::usage::Usage;
 /// # Example
 ///
 /// ```rust
-/// use machi::callback::RunContext;
+/// use machi::hooks::RunContext;
 ///
 /// let ctx = RunContext::new()
 ///     .with_agent_name("my_agent")

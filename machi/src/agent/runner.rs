@@ -26,10 +26,10 @@ use super::{
     },
 };
 use crate::{
-    callback::{Hooks, NoopHooks, RunContext},
     chat::{ChatProvider, ChatRequest, ChatResponse, ToolChoice},
     error::{AgentError, Error, Result},
     guardrail::{InputGuardrail, InputGuardrailResult, OutputGuardrail, OutputGuardrailResult},
+    hooks::{Hooks, NoopHooks, RunContext},
     message::Message,
     stream::{StreamAggregator, StreamChunk},
     tool::{

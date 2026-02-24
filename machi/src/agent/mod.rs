@@ -47,7 +47,6 @@
 
 mod config;
 pub mod error;
-mod hook;
 pub mod result;
 mod runner;
 

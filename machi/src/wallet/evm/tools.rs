@@ -132,7 +132,7 @@ impl DynTool for GetBalanceTool {
         let balance = if let Some(addr_str) = args.get("address").and_then(Value::as_str) {
             let address: alloy::primitives::Address = addr_str
                 .parse()
-                .map_err(|e| ToolError::invalid_args(format!("invalid address: {e}")))?;
+                .map_err(|e| ToolError::InvalidArguments(format!("invalid address: {e}")))?;
             self.0.balance_of(address).await?
         } else {
             self.0.balance().await?
@@ -182,10 +182,9 @@ impl DynTool for SignMessageTool {
     }
 
     async fn call_json(&self, args: Value) -> Result<Value, ToolError> {
-        let message = args
-            .get("message")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'message'"))?;
+        let message = args.get("message").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::InvalidArguments("missing required field 'message'".into())
+        })?;
 
         let signature = self.0.sign_message(message.as_bytes()).await?;
 
@@ -365,11 +364,11 @@ impl DynTool for GetTransactionReceiptTool {
         let hash_str = args
             .get("hash")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'hash'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'hash'".into()))?;
 
         let hash: alloy::primitives::B256 = hash_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid tx hash: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid tx hash: {e}")))?;
 
         let receipt = self.0.transaction_receipt(hash).await?;
 
@@ -432,11 +431,11 @@ impl DynTool for GetTransactionTool {
         let hash_str = args
             .get("hash")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'hash'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'hash'".into()))?;
 
         let hash: alloy::primitives::B256 = hash_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid tx hash: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid tx hash: {e}")))?;
 
         let tx = self.0.transaction_by_hash(hash).await?;
 
@@ -445,7 +444,7 @@ impl DynTool for GetTransactionTool {
                 // Serialize the full RPC transaction to avoid hardcoded field paths
                 // across different alloy transaction envelope variants.
                 let tx_json = serde_json::to_value(&t)
-                    .map_err(|e| ToolError::execution(format!("serialize tx: {e}")))?;
+                    .map_err(|e| ToolError::Execution(format!("serialize tx: {e}")))?;
                 Ok(serde_json::json!({
                     "found": true,
                     "block_number": t.block_number,
@@ -497,14 +496,13 @@ impl DynTool for IsContractTool {
     }
 
     async fn call_json(&self, args: Value) -> Result<Value, ToolError> {
-        let addr_str = args
-            .get("address")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'address'"))?;
+        let addr_str = args.get("address").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::InvalidArguments("missing required field 'address'".into())
+        })?;
 
         let address: alloy::primitives::Address = addr_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid address: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid address: {e}")))?;
 
         let code = self.0.code_at(address).await?;
         let is_contract = !code.is_empty();
@@ -561,17 +559,17 @@ impl DynTool for TransferTool {
         let to_str = args
             .get("to")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'to'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'to'".into()))?;
         let amount_str = args
             .get("amount")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'amount'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'amount'".into()))?;
 
         let to: alloy::primitives::Address = to_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid address: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid address: {e}")))?;
         let amount = alloy::primitives::U256::from_str_radix(amount_str, 10)
-            .map_err(|e| ToolError::invalid_args(format!("invalid amount: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid amount: {e}")))?;
 
         let tx_hash = self.0.transfer(to, amount).await?;
 
@@ -624,7 +622,7 @@ impl DynTool for ResolveEnsTool {
         let name = args
             .get("name")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'name'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'name'".into()))?;
 
         let address = self.0.resolve_ens(name).await?;
 
@@ -683,14 +681,13 @@ impl DynTool for ReverseEnsTool {
     }
 
     async fn call_json(&self, args: Value) -> Result<Value, ToolError> {
-        let addr_str = args
-            .get("address")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'address'"))?;
+        let addr_str = args.get("address").and_then(Value::as_str).ok_or_else(|| {
+            ToolError::InvalidArguments("missing required field 'address'".into())
+        })?;
 
         let address: alloy::primitives::Address = addr_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid address: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid address: {e}")))?;
 
         let name = self.0.reverse_ens(address).await?;
 
@@ -758,15 +755,15 @@ impl DynTool for Erc20BalanceTool {
         let token_str = args
             .get("token")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'token'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'token'".into()))?;
 
         let token: alloy::primitives::Address = token_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid token address: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid token address: {e}")))?;
 
         let owner = if let Some(s) = args.get("owner").and_then(Value::as_str) {
             s.parse()
-                .map_err(|e| ToolError::invalid_args(format!("invalid owner address: {e}")))?
+                .map_err(|e| ToolError::InvalidArguments(format!("invalid owner address: {e}")))?
         } else {
             self.0.address_typed()
         };
@@ -836,24 +833,24 @@ impl DynTool for Erc20TransferTool {
         let token_str = args
             .get("token")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'token'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'token'".into()))?;
         let to_str = args
             .get("to")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'to'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'to'".into()))?;
         let amount_str = args
             .get("amount")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'amount'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'amount'".into()))?;
 
         let token: alloy::primitives::Address = token_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid token address: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid token address: {e}")))?;
         let to: alloy::primitives::Address = to_str
             .parse()
-            .map_err(|e| ToolError::invalid_args(format!("invalid recipient address: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid recipient address: {e}")))?;
         let amount = alloy::primitives::U256::from_str_radix(amount_str, 10)
-            .map_err(|e| ToolError::invalid_args(format!("invalid amount: {e}")))?;
+            .map_err(|e| ToolError::InvalidArguments(format!("invalid amount: {e}")))?;
 
         let tx_hash = self.0.erc20_transfer(token, to, amount).await?;
 

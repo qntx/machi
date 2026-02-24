@@ -58,11 +58,11 @@
 pub mod a2a;
 pub mod agent;
 pub mod audio;
-pub mod callback;
 pub mod chat;
 pub mod embedding;
 pub mod error;
 pub mod guardrail;
+pub mod hooks;
 pub mod llms;
 #[cfg(feature = "mcp")]
 pub mod mcp;
@@ -77,13 +77,7 @@ pub mod usage;
 #[cfg(feature = "wallet")]
 pub mod wallet;
 
-// Re-export submodule error types at crate root for convenience.
-pub use agent::AgentError;
 pub use error::{Error, Result};
-pub use llms::LlmError;
 #[cfg(feature = "derive")]
 pub use machi_derive::tool;
-pub use memory::MemoryError;
 pub use tool::ToolError;
-#[cfg(feature = "wallet")]
-pub use wallet::WalletError;

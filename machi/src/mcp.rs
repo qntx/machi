@@ -429,7 +429,7 @@ impl McpServer {
             Value::Object(map) => Some(map),
             Value::Null => None,
             other => {
-                return Err(ToolError::invalid_args(format!(
+                return Err(ToolError::InvalidArguments(format!(
                     "MCP tool arguments must be a JSON object, got: {other}"
                 )));
             }
@@ -446,13 +446,13 @@ impl McpServer {
             })
             .await
             .map_err(|e| {
-                ToolError::execution(format!("MCP tool '{tool_name}' call failed: {e}"))
+                ToolError::Execution(format!("MCP tool '{tool_name}' call failed: {e}"))
             })?;
 
         // Check if the server reported an error.
         if result.is_error == Some(true) {
             let text = extract_text_from_contents(&result.content);
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "MCP tool '{tool_name}' returned error: {text}"
             )));
         }

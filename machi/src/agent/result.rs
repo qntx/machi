@@ -12,11 +12,11 @@ use std::fmt;
 
 use serde_json::Value;
 
-use crate::callback::SharedHooks;
 use crate::chat::ChatResponse;
 use crate::guardrail::{
     InputGuardrail, InputGuardrailResult, OutputGuardrail, OutputGuardrailResult,
 };
+use crate::hooks::SharedHooks;
 use crate::memory::SharedSession;
 use crate::message::{Content, ContentPart, ImageMime, Message, Role, ToolCall};
 use crate::tool::SharedConfirmationHandler;

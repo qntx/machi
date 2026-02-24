@@ -108,10 +108,10 @@ impl Tool for ReadFileTool {
         // Existence check
         let metadata = fs::metadata(path)
             .await
-            .map_err(|e| ToolError::execution(format!("Cannot access '{}': {e}", args.path)))?;
+            .map_err(|e| ToolError::Execution(format!("Cannot access '{}': {e}", args.path)))?;
 
         if !metadata.is_file() {
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "Not a regular file: {}",
                 args.path
             )));
@@ -119,7 +119,7 @@ impl Tool for ReadFileTool {
 
         // Size guard
         if metadata.len() > self.max_size as u64 {
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "File too large: {} bytes (max: {} bytes)",
                 metadata.len(),
                 self.max_size
@@ -128,7 +128,7 @@ impl Tool for ReadFileTool {
 
         let content = fs::read_to_string(path)
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to read '{}': {e}", args.path)))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to read '{}': {e}", args.path)))?;
 
         // Apply optional line range
         Ok(extract_lines(&content, args.start_line, args.end_line))
@@ -236,14 +236,14 @@ impl Tool for WriteFileTool {
         {
             fs::create_dir_all(parent)
                 .await
-                .map_err(|e| ToolError::execution(format!("Failed to create directories: {e}")))?;
+                .map_err(|e| ToolError::Execution(format!("Failed to create directories: {e}")))?;
         }
 
         if args.append {
             // Read-then-append to preserve existing content
             let existing = if path.is_file() {
                 fs::read_to_string(path).await.map_err(|e| {
-                    ToolError::execution(format!("Failed to read existing file: {e}"))
+                    ToolError::Execution(format!("Failed to read existing file: {e}"))
                 })?
             } else {
                 String::new()
@@ -252,7 +252,7 @@ impl Tool for WriteFileTool {
             let merged = format!("{existing}{}", args.content);
             fs::write(path, &merged)
                 .await
-                .map_err(|e| ToolError::execution(format!("Failed to write file: {e}")))?;
+                .map_err(|e| ToolError::Execution(format!("Failed to write file: {e}")))?;
 
             Ok(format!(
                 "Appended {} bytes to '{}'",
@@ -262,7 +262,7 @@ impl Tool for WriteFileTool {
         } else {
             fs::write(path, &args.content)
                 .await
-                .map_err(|e| ToolError::execution(format!("Failed to write file: {e}")))?;
+                .map_err(|e| ToolError::Execution(format!("Failed to write file: {e}")))?;
 
             Ok(format!(
                 "Wrote {} bytes to '{}'",
@@ -344,12 +344,12 @@ impl Tool for EditFileTool {
 
         let content = fs::read_to_string(path)
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to read '{}': {e}", args.path)))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to read '{}': {e}", args.path)))?;
 
         if !content.contains(&args.old_text) {
             // Show a truncated preview so the LLM can diagnose mismatches.
             let preview: String = args.old_text.chars().take(80).collect();
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "Text not found in '{}': '{preview}'",
                 args.path
             )));
@@ -364,7 +364,7 @@ impl Tool for EditFileTool {
 
         fs::write(path, &new_content)
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to write '{}': {e}", args.path)))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to write '{}': {e}", args.path)))?;
 
         Ok(format!("Replaced {count} occurrence(s) in '{}'", args.path))
     }
@@ -461,10 +461,10 @@ impl Tool for ListDirTool {
 
         let metadata = fs::metadata(path)
             .await
-            .map_err(|e| ToolError::execution(format!("Cannot access '{}': {e}", args.path)))?;
+            .map_err(|e| ToolError::Execution(format!("Cannot access '{}': {e}", args.path)))?;
 
         if !metadata.is_dir() {
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "Not a directory: {}",
                 args.path
             )));
@@ -509,12 +509,12 @@ fn collect_entries(
         let mut entries = Vec::new();
         let mut read_dir = fs::read_dir(dir)
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to read directory: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to read directory: {e}")))?;
 
         while let Some(entry) = read_dir
             .next_entry()
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to read entry: {e}")))?
+            .map_err(|e| ToolError::Execution(format!("Failed to read entry: {e}")))?
         {
             let file_name = entry.file_name().to_string_lossy().into_owned();
 
@@ -526,7 +526,7 @@ fn collect_entries(
             let meta = entry
                 .metadata()
                 .await
-                .map_err(|e| ToolError::execution(format!("Failed to read metadata: {e}")))?;
+                .map_err(|e| ToolError::Execution(format!("Failed to read metadata: {e}")))?;
 
             let is_dir = meta.is_dir();
             let size = if is_dir { None } else { Some(meta.len()) };

@@ -13,7 +13,7 @@
 //! let request = ChatRequest::new("gpt-4o")
 //!     .system("You are helpful.")
 //!     .user("Hello!")
-//!     .max_tokens(100)
+//!     .max_completion_tokens(100)
 //!     .temperature(0.7);
 //!
 //! let response = ChatResponse::from_text("Hello! How can I help?");
@@ -83,12 +83,8 @@ pub struct ChatRequest {
     #[serde(default)]
     pub messages: Vec<Message>,
 
-    /// Maximum tokens to generate (deprecated, use `max_completion_tokens`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
-
-    /// Maximum completion tokens (preferred over `max_tokens` for newer models).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Maximum tokens to generate in the completion.
+    #[serde(skip_serializing_if = "Option::is_none", alias = "max_tokens")]
     pub max_completion_tokens: Option<u32>,
 
     /// Sampling temperature (0.0 to 2.0).
@@ -223,14 +219,7 @@ impl ChatRequest {
         self
     }
 
-    /// Sets max tokens (legacy, prefer `max_completion_tokens`).
-    #[must_use]
-    pub const fn max_tokens(mut self, max_tokens: u32) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-
-    /// Sets max completion tokens (preferred for newer models).
+    /// Sets the maximum number of tokens to generate.
     #[must_use]
     pub const fn max_completion_tokens(mut self, tokens: u32) -> Self {
         self.max_completion_tokens = Some(tokens);
@@ -738,14 +727,8 @@ pub trait ChatProvider: Send + Sync {
     fn supports_json_mode(&self) -> bool {
         false
     }
-}
 
-/// Extension trait for `ChatProvider` with convenience methods.
-#[async_trait]
-pub trait ChatProviderExt: ChatProvider {
     /// Send a simple text message and get a text response.
-    ///
-    /// This is a convenience method for simple one-shot interactions.
     async fn complete(&self, prompt: &str) -> Result<String> {
         let request = ChatRequest::new(self.default_model()).user(prompt);
         let response = self.chat(&request).await?;
@@ -760,17 +743,7 @@ pub trait ChatProviderExt: ChatProvider {
         let response = self.chat(&request).await?;
         Ok(response.text().unwrap_or_default())
     }
-
-    /// Send a message with a custom model.
-    async fn complete_with_model(&self, model: &str, prompt: &str) -> Result<String> {
-        let request = ChatRequest::new(model).user(prompt);
-        let response = self.chat(&request).await?;
-        Ok(response.text().unwrap_or_default())
-    }
 }
-
-// Blanket implementation for all ChatProviders
-impl<T: ChatProvider> ChatProviderExt for T {}
 
 /// Type alias for an Arc-wrapped `ChatProvider`.
 pub type SharedChatProvider = std::sync::Arc<dyn ChatProvider>;

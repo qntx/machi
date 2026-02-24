@@ -227,7 +227,7 @@ impl<S: Into<String>> From<S> for Instructions {
 /// - **`model`** — LLM model identifier (e.g., `"gpt-4o"`, `"llama3"`)
 /// - **`tools`** — capabilities the agent can invoke via function calling
 /// - **`managed_agents`** — sub-agents that get wrapped as tools for parallel dispatch
-/// - **`hooks`** — optional per-agent lifecycle callbacks
+/// - **`hooks`** — optional per-agent lifecycle hooks
 /// - **`max_steps`** — safety limit on reasoning loop iterations
 /// - **`provider`** — the LLM provider this agent uses for chat completions
 /// - **`description`** — human-readable description (used when this agent is a managed agent)

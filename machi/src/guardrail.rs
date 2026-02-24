@@ -30,7 +30,7 @@
 //! # Quick Start
 //!
 //! ```rust
-//! use machi::callback::RunContext;
+//! use machi::hooks::RunContext;
 //! use machi::guardrail::{GuardrailOutput, InputGuardrailCheck, InputGuardrail};
 //! use machi::message::Message;
 //!
@@ -64,8 +64,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::callback::RunContext;
 use crate::error::Result;
+use crate::hooks::RunContext;
 use crate::message::Message;
 
 /// The output of a guardrail check function.

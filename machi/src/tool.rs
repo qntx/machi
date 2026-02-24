@@ -45,38 +45,6 @@ pub enum ToolError {
     Other(String),
 }
 
-impl ToolError {
-    /// Create an execution error.
-    #[must_use]
-    pub fn execution(msg: impl Into<String>) -> Self {
-        Self::Execution(msg.into())
-    }
-
-    /// Create an invalid arguments error.
-    #[must_use]
-    pub fn invalid_args(msg: impl Into<String>) -> Self {
-        Self::InvalidArguments(msg.into())
-    }
-
-    /// Create a not found error.
-    #[must_use]
-    pub fn not_found(name: impl Into<String>) -> Self {
-        Self::NotFound(name.into())
-    }
-
-    /// Create a forbidden error.
-    #[must_use]
-    pub fn forbidden(tool_name: impl Into<String>) -> Self {
-        Self::Forbidden(tool_name.into())
-    }
-
-    /// Create a confirmation denied error.
-    #[must_use]
-    pub fn confirmation_denied(tool_name: impl Into<String>) -> Self {
-        Self::ConfirmationDenied(tool_name.into())
-    }
-}
-
 impl From<String> for ToolError {
     fn from(s: String) -> Self {
         Self::Other(s)
@@ -346,26 +314,6 @@ pub enum ToolExecutionPolicy {
     Forbidden,
 }
 
-impl ToolExecutionPolicy {
-    /// Check if the policy allows autonomous execution.
-    #[must_use]
-    pub const fn is_auto(&self) -> bool {
-        matches!(self, Self::Auto)
-    }
-
-    /// Check if the policy requires confirmation.
-    #[must_use]
-    pub const fn requires_confirmation(&self) -> bool {
-        matches!(self, Self::RequireConfirmation)
-    }
-
-    /// Check if the policy forbids execution.
-    #[must_use]
-    pub const fn is_forbidden(&self) -> bool {
-        matches!(self, Self::Forbidden)
-    }
-}
-
 impl fmt::Display for ToolExecutionPolicy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -459,76 +407,5 @@ pub struct AlwaysDenyHandler;
 impl ConfirmationHandler for AlwaysDenyHandler {
     async fn confirm(&self, _request: &ToolConfirmationRequest) -> ToolConfirmationResponse {
         ToolConfirmationResponse::Denied
-    }
-}
-
-/// Result of a tool call execution.
-///
-/// # `OpenAI` API Alignment
-///
-/// This maps to a tool message in the conversation:
-/// ```json
-/// {
-///     "role": "tool",
-///     "tool_call_id": "call_abc123",
-///     "content": "{\"result\": ...}"
-/// }
-/// ```
-#[derive(Debug, Clone)]
-pub struct ToolCallResult {
-    /// The tool call ID (maps to `tool_call_id` in API).
-    pub id: String,
-    /// The tool name.
-    pub name: String,
-    /// The result of execution (success value or error).
-    pub result: Result<Value, ToolError>,
-}
-
-impl ToolCallResult {
-    /// Check if the call was successful.
-    #[must_use]
-    pub const fn is_success(&self) -> bool {
-        self.result.is_ok()
-    }
-
-    /// Get the output value if successful.
-    #[must_use]
-    pub fn output(&self) -> Option<&Value> {
-        self.result.as_ref().ok()
-    }
-
-    /// Get the error if failed.
-    #[must_use]
-    pub fn error(&self) -> Option<&ToolError> {
-        self.result.as_ref().err()
-    }
-
-    /// Convert to a string representation for the LLM.
-    #[must_use]
-    pub fn to_string_for_llm(&self) -> String {
-        match &self.result {
-            Ok(value) => serde_json::to_string(value).unwrap_or_else(|_| value.to_string()),
-            Err(e) => format!("Error: {e}"),
-        }
-    }
-
-    /// Create a successful result.
-    #[must_use]
-    pub fn success(id: impl Into<String>, name: impl Into<String>, value: Value) -> Self {
-        Self {
-            id: id.into(),
-            name: name.into(),
-            result: Ok(value),
-        }
-    }
-
-    /// Create a failed result.
-    #[must_use]
-    pub fn failure(id: impl Into<String>, name: impl Into<String>, error: ToolError) -> Self {
-        Self {
-            id: id.into(),
-            name: name.into(),
-            result: Err(error),
-        }
     }
 }

@@ -182,7 +182,7 @@ impl A2aAgent {
     ///
     /// # Arguments
     ///
-    /// * `url` — the base URL of the A2A agent
+    /// * `url` �?the base URL of the A2A agent
     ///
     /// # Examples
     ///
@@ -250,13 +250,13 @@ impl A2aAgent {
     /// Returns an error if the message fails to send or the response stream encounters an error.
     pub async fn send_message(&self, message: A2aMessage) -> Result<String, ToolError> {
         let mut stream = self.client.send_message(message).await.map_err(|e| {
-            ToolError::execution(format!("A2A agent '{}' send failed: {e}", self.name))
+            ToolError::Execution(format!("A2A agent '{}' send failed: {e}", self.name))
         })?;
 
         let mut output = String::new();
         while let Some(result) = stream.next().await {
             let event = result.map_err(|e| {
-                ToolError::execution(format!("A2A agent '{}' stream error: {e}", self.name))
+                ToolError::Execution(format!("A2A agent '{}' stream error: {e}", self.name))
             })?;
             match event {
                 ClientEvent::Message(msg) => {
@@ -373,8 +373,8 @@ impl DynTool for A2aTool {
         let text = match args.get("message").and_then(|v| v.as_str()) {
             Some(t) => t.to_owned(),
             None => {
-                return Err(ToolError::invalid_args(
-                    "Missing required field 'message' (string)",
+                return Err(ToolError::InvalidArguments(
+                    "Missing required field 'message' (string)".into(),
                 ));
             }
         };

@@ -186,12 +186,12 @@ impl SearchProvider for TavilyProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ToolError::execution(format!("Tavily request failed: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Tavily request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "Tavily API error (HTTP {status}): {text}"
             )));
         }
@@ -199,7 +199,7 @@ impl SearchProvider for TavilyProvider {
         let parsed: TavilyResponse = response
             .json()
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to parse Tavily response: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to parse Tavily response: {e}")))?;
 
         Ok(parsed
             .results
@@ -290,12 +290,12 @@ impl SearchProvider for SearxngProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ToolError::execution(format!("SearXNG request failed: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("SearXNG request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "SearXNG error (HTTP {status}): {text}"
             )));
         }
@@ -303,7 +303,7 @@ impl SearchProvider for SearxngProvider {
         let parsed: SearxngResponse = response
             .json()
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to parse SearXNG response: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to parse SearXNG response: {e}")))?;
 
         Ok(parsed
             .results
@@ -391,18 +391,18 @@ impl SearchProvider for BraveProvider {
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| ToolError::execution(format!("Brave Search request failed: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Brave Search request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "Brave Search error (HTTP {status}): {text}"
             )));
         }
 
         let parsed: BraveResponse = response.json().await.map_err(|e| {
-            ToolError::execution(format!("Failed to parse Brave Search response: {e}"))
+            ToolError::Execution(format!("Failed to parse Brave Search response: {e}"))
         })?;
 
         let results = parsed.web.map(|w| w.results).unwrap_or_default();
@@ -431,7 +431,7 @@ static DDG_SNIPPET_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Search provider backed by [DuckDuckGo](https://duckduckgo.com) Lite.
 ///
-/// Uses the `DuckDuckGo` Lite HTML interface — **no API key required**.
+/// Uses the `DuckDuckGo` Lite HTML interface �?**no API key required**.
 ///
 /// > **Note:** DuckDuckGo may occasionally serve a CAPTCHA page instead of
 /// > results. This provider works best for low-volume or infrequent queries.
@@ -526,18 +526,18 @@ impl SearchProvider for DuckDuckGoProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ToolError::execution(format!("DuckDuckGo request failed: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("DuckDuckGo request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "DuckDuckGo error (HTTP {status}): {text}"
             )));
         }
 
         let html = response.text().await.map_err(|e| {
-            ToolError::execution(format!("Failed to read DuckDuckGo response: {e}"))
+            ToolError::Execution(format!("Failed to read DuckDuckGo response: {e}"))
         })?;
 
         Ok(Self::parse_html(&html)
@@ -557,7 +557,7 @@ static RSS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Search provider backed by [Bing](https://www.bing.com) RSS feed.
 ///
-/// Uses Bing's public RSS search endpoint — **no API key required**.
+/// Uses Bing's public RSS search endpoint �?**no API key required**.
 ///
 /// # Examples
 ///
@@ -641,12 +641,12 @@ impl SearchProvider for BingProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ToolError::execution(format!("Bing request failed: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Bing request failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ToolError::execution(format!(
+            return Err(ToolError::Execution(format!(
                 "Bing error (HTTP {status}): {text}"
             )));
         }
@@ -654,7 +654,7 @@ impl SearchProvider for BingProvider {
         let xml = response
             .text()
             .await
-            .map_err(|e| ToolError::execution(format!("Failed to read Bing response: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to read Bing response: {e}")))?;
 
         Ok(Self::parse_rss(&xml)
             .into_iter()
@@ -808,15 +808,17 @@ impl Tool for WebSearchTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         if args.query.trim().is_empty() {
-            return Err(ToolError::invalid_args("Search query cannot be empty"));
+            return Err(ToolError::InvalidArguments(
+                "Search query cannot be empty".into(),
+            ));
         }
 
         let max = args.max_results.unwrap_or(self.max_results);
         let results = self.provider.search(&args.query, max).await?;
 
         if results.is_empty() {
-            return Err(ToolError::execution(
-                "No results found. Try a different or less restrictive query.",
+            return Err(ToolError::Execution(
+                "No results found. Try a different or less restrictive query.".into(),
             ));
         }
 

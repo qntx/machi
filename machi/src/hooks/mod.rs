@@ -1,21 +1,40 @@
-//! Unified hook trait for agent lifecycle callbacks.
+//! Lifecycle hooks for observing agent execution.
 //!
-//! [`Hooks`] provides a single observation layer for all agent lifecycle events.
-//! Every method receives the agent name, enabling multi-agent observability
-//! with a single implementation.
+//! [`Hooks`] is a single trait that observes all agents in a run. Every method
+//! receives the agent name, enabling multi-agent observability with one impl.
 //!
-//! # Lifecycle Events
+//! # Provided Implementations
 //!
-//! 1. **`on_agent_start`** — agent begins execution
-//! 2. **Step loop** (repeats until done):
-//!    - `on_llm_start` → *LLM call* → `on_llm_end`
-//!    - `on_tool_start` → *tool execution* → `on_tool_end`
-//! 3. **`on_agent_end`** — agent produces final output, or **`on_error`** on failure
+//! | Type | Description |
+//! |------|-------------|
+//! | [`NoopHooks`] | Zero-overhead no-op (default) |
+//! | [`LoggingHooks`] | Structured logging via `tracing` |
+//!
+//! # Quick Start
+//!
+//! ```rust
+//! use async_trait::async_trait;
+//! use serde_json::Value;
+//! use machi::hooks::{Hooks, RunContext};
+//!
+//! struct MyHooks;
+//!
+//! #[async_trait]
+//! impl Hooks for MyHooks {
+//!     async fn on_agent_start(&self, ctx: &RunContext, agent_name: &str) {
+//!         println!("[step {}] {agent_name} started", ctx.step());
+//!     }
+//! }
+//! ```
+
+mod context;
+mod logging;
 
 use async_trait::async_trait;
+pub use context::RunContext;
+pub use logging::{LogLevel, LoggingHooks};
 use serde_json::Value;
 
-use super::context::RunContext;
 use crate::chat::ChatResponse;
 use crate::error::Error;
 use crate::message::Message;
@@ -69,3 +88,12 @@ pub trait Hooks: Send + Sync {
     /// Called when an error occurs during the agent run.
     async fn on_error(&self, _ctx: &RunContext, _agent_name: &str, _error: &Error) {}
 }
+
+/// A zero-sized no-op implementation of [`Hooks`].
+///
+/// All methods are inherited from the trait defaults (empty bodies).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoopHooks;
+
+#[async_trait]
+impl Hooks for NoopHooks {}

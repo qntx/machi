@@ -19,10 +19,7 @@ use crate::tool::ToolDefinition;
 pub struct OpenAIChatRequest {
     pub model: String,
     pub messages: Vec<OpenAIMessage>,
-    /// Deprecated: use `max_completion_tokens` instead.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
-    /// Max tokens including visible output and reasoning tokens.
+    /// Max tokens to generate (including reasoning tokens for o-series).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -403,16 +400,10 @@ impl OpenAI {
             request.model.clone()
         };
 
-        // Prefer max_completion_tokens over deprecated max_tokens
-        let (max_tokens, max_completion_tokens) = request
-            .max_completion_tokens
-            .map_or((request.max_tokens, None), |tokens| (None, Some(tokens)));
-
         OpenAIChatRequest {
             model,
             messages,
-            max_tokens,
-            max_completion_tokens,
+            max_completion_tokens: request.max_completion_tokens,
             temperature: request.temperature,
             top_p: request.top_p,
             frequency_penalty: request.frequency_penalty,

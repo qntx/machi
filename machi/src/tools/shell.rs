@@ -182,7 +182,7 @@ impl Tool for ExecTool {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| ToolError::execution(format!("Failed to spawn command: {e}")))?;
+            .map_err(|e| ToolError::Execution(format!("Failed to spawn command: {e}")))?;
 
         // Take the stdio handles *before* waiting so ownership stays with us.
         let child_stdout = child.stdout.take();
@@ -193,7 +193,7 @@ impl Tool for ExecTool {
             let status = child
                 .wait()
                 .await
-                .map_err(|e| ToolError::execution(format!("Command execution failed: {e}")))?;
+                .map_err(|e| ToolError::Execution(format!("Command execution failed: {e}")))?;
 
             let mut stdout_buf = Vec::new();
             let mut stderr_buf = Vec::new();
@@ -230,7 +230,7 @@ impl Tool for ExecTool {
             }
             Ok(Err(e)) => Err(e),
             Err(_) => {
-                // Timeout — `kill_on_drop` will clean up the child.
+                // Timeout �?`kill_on_drop` will clean up the child.
                 Ok(ExecResult {
                     exit_code: None,
                     stdout: String::new(),

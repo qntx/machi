@@ -105,7 +105,7 @@ impl ChatProvider for OpenAI {
             gen_ai.system = "openai",
             gen_ai.request.model = %request.model,
             gen_ai.request.temperature = request.temperature.unwrap_or(-1.0),
-            gen_ai.request.max_tokens = request.max_completion_tokens.or(request.max_tokens).unwrap_or(0),
+            gen_ai.request.max_tokens = request.max_completion_tokens.unwrap_or(0),
             gen_ai.usage.input_tokens = tracing::field::Empty,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.response.model = tracing::field::Empty,

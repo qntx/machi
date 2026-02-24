@@ -3,7 +3,7 @@
 //! # Example
 //!
 //! ```rust
-//! use machi::callback::{LoggingHooks, LogLevel};
+//! use machi::hooks::{LoggingHooks, LogLevel};
 //!
 //! let hooks = LoggingHooks::new();
 //! let debug_hooks = LoggingHooks::with_level(LogLevel::Debug);
@@ -12,8 +12,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
+use super::Hooks;
 use super::context::RunContext;
-use super::hooks::Hooks;
 use crate::chat::ChatResponse;
 use crate::error::Error;
 use crate::message::Message;
@@ -54,7 +54,7 @@ macro_rules! log_at_level {
 /// # Example
 ///
 /// ```rust
-/// use machi::callback::LoggingHooks;
+/// use machi::hooks::LoggingHooks;
 ///
 /// let hooks = LoggingHooks::new();
 /// ```

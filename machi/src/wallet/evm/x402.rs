@@ -8,11 +8,11 @@
 //!
 //! ```text
 //! Agent calls x402_fetch tool
-//!   → X402HttpClient.get(url)
-//!     → reqwest + x402-reqwest middleware
-//!       ├→ GET /resource → 402 Payment Required
-//!       ├→ V2Eip155ExactClient signs payment with PrivateKeySigner
-//!       └→ GET /resource + X-PAYMENT header → 200 OK
+//!   â†?X402HttpClient.get(url)
+//!     â†?reqwest + x402-reqwest middleware
+//!       â”œâ†’ GET /resource â†?402 Payment Required
+//!       â”œâ†’ V2Eip155ExactClient signs payment with PrivateKeySigner
+//!       â””â†’ GET /resource + X-PAYMENT header â†?200 OK
 //! ```
 
 use std::sync::Arc;
@@ -33,7 +33,7 @@ use crate::wallet::WalletError;
 /// Wraps [`reqwest`] with [`x402_reqwest`] middleware so that any request
 /// returning HTTP 402 is automatically retried with a signed payment header.
 /// Uses the [`EvmWallet`]'s [`PrivateKeySigner`](alloy::signers::local::PrivateKeySigner)
-/// to sign ERC-3009 payment authorizations — **no gas required**.
+/// to sign ERC-3009 payment authorizations â€?**no gas required**.
 ///
 /// Registers both V1 and V2 EIP-155 exact scheme clients for maximum
 /// compatibility with x402 servers.
@@ -197,7 +197,7 @@ impl DynTool for X402FetchTool {
         let url = args
             .get("url")
             .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::invalid_args("missing required field 'url'"))?;
+            .ok_or_else(|| ToolError::InvalidArguments("missing required field 'url'".into()))?;
 
         let method = args.get("method").and_then(Value::as_str).unwrap_or("GET");
 

@@ -307,7 +307,7 @@ impl Ollama {
 
         let options = if request.temperature.is_some()
             || request.top_p.is_some()
-            || request.max_tokens.is_some()
+            || request.max_completion_tokens.is_some()
             || request.stop.is_some()
             || request.seed.is_some()
         {
@@ -315,7 +315,7 @@ impl Ollama {
             Some(OllamaOptions {
                 temperature: request.temperature,
                 top_p: request.top_p,
-                num_predict: request.max_tokens.map(|t| t as i32),
+                num_predict: request.max_completion_tokens.map(|t| t as i32),
                 seed: request.seed,
                 stop: request.stop.clone(),
                 ..Default::default()

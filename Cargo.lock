@@ -2438,9 +2438,9 @@ dependencies = [
 
 [[package]]
 name = "kobe"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cd09c8233b828fa4c10e2fa2c84221a4eb677fc83d7df0e3156ffc89ba27ab2"
+checksum = "481a62817a6ba5475bca30df9c73a751e5326dbadafd89a0330b07e2ca413699"
 dependencies = [
  "bip39",
  "zeroize",

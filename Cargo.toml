@@ -65,7 +65,7 @@ tokio = { version = "1.44", default-features = false, features = ["sync"] }
 tokio-test = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.16", features = ["v4", "serde"] }
+uuid = { version = "1.21", features = ["v4", "serde"] }
 
 [profile.release]
 codegen-units = 1

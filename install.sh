@@ -1,16 +1,17 @@
 #!/bin/sh
-# Installer for the machi CLI — https://github.com/qntx/machi
+# CLI installer — downloads the latest release binary from GitHub.
+# Configure REPO and BIN below. Everything else is derived automatically.
 #
-# Usage:  curl -fsSL https://raw.githubusercontent.com/qntx/machi/main/install.sh | sh
-#
-# Environment:
-#   MACHI_VERSION      Override version (default: latest)
-#   MACHI_INSTALL_DIR  Override install directory (default: ~/.local/bin)
+# Environment (upper-cased BIN prefix):
+#   <BIN>_VERSION      Override version (default: latest)
+#   <BIN>_INSTALL_DIR  Override install directory (default: ~/.local/bin)
 
 set -eu
 
 REPO="qntx/machi"
 BIN="machi"
+
+BIN_UPPER=$(echo "$BIN" | tr '[:lower:]' '[:upper:]')
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 err() { printf '\033[31merror\033[0m: %s\n' "$*" >&2; exit 1; }
@@ -59,8 +60,8 @@ latest_version() {
 
 main() {
     target=$(detect_target)
-    ver="${MACHI_VERSION:-$(latest_version)}"
-    dir="${MACHI_INSTALL_DIR:-$HOME/.local/bin}"
+    eval "ver=\${${BIN_UPPER}_VERSION:-\$(latest_version)}"
+    eval "dir=\${${BIN_UPPER}_INSTALL_DIR:-\$HOME/.local/bin}"
 
     say "Installing $BIN v$ver ($target)"
 

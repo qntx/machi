@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::Client;
+use reqwest_middleware::ClientWithMiddleware;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -32,10 +32,15 @@ struct OpenAIError {
 }
 
 /// `OpenAI` API client.
+///
+/// Uses [`ClientWithMiddleware`] internally, which acts as a plain HTTP
+/// client when no middleware is registered. When constructed via
+/// [`from_wallet`](Self::from_wallet), the x402 payment middleware is
+/// added so that HTTP 402 responses are handled transparently.
 #[derive(Debug, Clone)]
 pub struct OpenAI {
     pub(crate) config: Arc<OpenAIConfig>,
-    pub(crate) client: Client,
+    pub(crate) client: ClientWithMiddleware,
 }
 
 impl OpenAI {
@@ -49,14 +54,63 @@ impl OpenAI {
             return Err(LlmError::auth("openai", "API key is required").into());
         }
 
-        let mut builder = Client::builder();
-        if let Some(timeout) = config.timeout_secs {
-            builder = builder.timeout(Duration::from_secs(timeout));
-        }
+        let client = Self::build_http_client(&config)?;
 
-        let client = builder
-            .build()
-            .map_err(|e| LlmError::internal(format!("Failed to create HTTP client: {e}")))?;
+        Ok(Self {
+            config: Arc::new(config),
+            client: reqwest_middleware::ClientBuilder::new(client).build(),
+        })
+    }
+
+    /// Create an x402-enabled client from an [`EvmWallet`](crate::wallet::EvmWallet).
+    ///
+    /// The returned client transparently handles HTTP 402 responses by
+    /// signing ERC-3009 payment authorizations using the wallet's signer.
+    /// Default base URL is `https://llm.qntx.fun/v1`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client fails to build.
+    #[cfg(feature = "x402")]
+    pub fn from_wallet(wallet: &crate::wallet::EvmWallet) -> Result<Self> {
+        Self::from_wallet_with(wallet, OpenAIConfig::x402())
+    }
+
+    /// Create an x402-enabled client with custom configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client fails to build.
+    #[cfg(feature = "x402")]
+    pub fn from_wallet_with(
+        wallet: &crate::wallet::EvmWallet,
+        config: OpenAIConfig,
+    ) -> Result<Self> {
+        use r402::scheme::PreferChain;
+        use r402::chain::ChainIdPattern;
+        use r402_evm::Eip155ExactClient;
+        use r402_http::client::{WithPayments, X402Client};
+
+        let http = Self::build_http_client(&config)?;
+        let signer = Arc::new(wallet.signer().clone());
+
+        // Prefer the wallet's chain so the middleware selects a network
+        // where the wallet actually holds funds, instead of blindly
+        // picking the first entry in the server's `accepts` list.
+        let prefer = PreferChain::new(vec![
+            ChainIdPattern::exact("eip155", wallet.chain_id().to_string()),
+        ]);
+        let x402 = X402Client::new()
+            .register(Eip155ExactClient::new(signer))
+            .with_selector(prefer);
+        let client = http.with_payments(x402);
+
+        tracing::debug!(
+            address = %wallet.address(),
+            chain = %wallet.chain_name(),
+            base_url = %config.base_url,
+            "x402-enabled OpenAI client created",
+        );
 
         Ok(Self {
             config: Arc::new(config),
@@ -72,6 +126,17 @@ impl OpenAI {
     pub fn from_env() -> Result<Self> {
         let config = OpenAIConfig::from_env()?;
         Self::new(config)
+    }
+
+    /// Build the underlying [`reqwest::Client`] with timeout from config.
+    fn build_http_client(config: &OpenAIConfig) -> Result<reqwest::Client> {
+        let mut builder = reqwest::Client::builder();
+        if let Some(timeout) = config.timeout_secs {
+            builder = builder.timeout(Duration::from_secs(timeout));
+        }
+        builder
+            .build()
+            .map_err(|e| LlmError::internal(format!("Failed to create HTTP client: {e}")).into())
     }
 
     /// Get the API key.
@@ -113,7 +178,7 @@ impl OpenAI {
     }
 
     /// Build request headers for JSON requests.
-    pub(crate) fn build_request(&self, url: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn build_request(&self, url: &str) -> reqwest_middleware::RequestBuilder {
         let mut req = self
             .client
             .post(url)
@@ -128,7 +193,7 @@ impl OpenAI {
     }
 
     /// Build request headers for multipart requests.
-    pub(crate) fn build_multipart_request(&self, url: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn build_multipart_request(&self, url: &str) -> reqwest_middleware::RequestBuilder {
         let mut req = self
             .client
             .post(url)
@@ -146,11 +211,7 @@ impl OpenAI {
     /// Core types already carry the correct serde attributes, so this is a
     /// thin wrapper that fills in the default model and adds `stream_options`
     /// when streaming.
-    pub(crate) fn build_chat_body(
-        &self,
-        request: &ChatRequest,
-        streaming: bool,
-    ) -> Result<Value> {
+    pub(crate) fn build_chat_body(&self, request: &ChatRequest, streaming: bool) -> Result<Value> {
         let mut body = serde_json::to_value(request)
             .map_err(|e| LlmError::internal(format!("Failed to serialize request: {e}")))?;
 

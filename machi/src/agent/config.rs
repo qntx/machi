@@ -435,11 +435,11 @@ impl Agent {
     /// use machi::agent::Agent;
     /// use machi::wallet::EvmWallet;
     ///
-    /// # async fn example() -> machi::Result<()> {
+    /// # fn example() -> machi::Result<()> {
     /// let wallet = EvmWallet::from_mnemonic(
     ///     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-    ///     None, 0, "https://eth.llamarpc.com",
-    /// ).await?;
+    ///     None, 0,
+    /// )?;
     ///
     /// let agent = Agent::new("defi-bot")
     ///     .wallet(wallet)

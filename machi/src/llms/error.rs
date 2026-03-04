@@ -190,3 +190,12 @@ impl From<reqwest::Error> for LlmError {
         }
     }
 }
+
+impl From<reqwest_middleware::Error> for LlmError {
+    fn from(err: reqwest_middleware::Error) -> Self {
+        match err {
+            reqwest_middleware::Error::Middleware(e) => Self::network(e.to_string()),
+            reqwest_middleware::Error::Reqwest(e) => Self::from(e),
+        }
+    }
+}

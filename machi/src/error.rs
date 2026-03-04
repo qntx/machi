@@ -51,6 +51,10 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
+    /// HTTP middleware error (e.g., x402 payment).
+    #[error("HTTP middleware error: {0}")]
+    HttpMiddleware(#[from] reqwest_middleware::Error),
+
     /// Wallet operation error.
     #[cfg(feature = "wallet")]
     #[error("Wallet error: {0}")]

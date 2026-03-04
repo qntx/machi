@@ -1,15 +1,18 @@
-# Installer for the machi CLI — https://github.com/qntx/machi
+# CLI installer — downloads the latest release binary from GitHub.
+# Configure $Repo and $Bin below. Everything else is derived automatically.
 #
-# Usage:  irm https://raw.githubusercontent.com/qntx/machi/main/install.ps1 | iex
-#
-# Environment:
-#   MACHI_VERSION      Override version (default: latest)
-#   MACHI_INSTALL_DIR  Override install directory (default: %LOCALAPPDATA%\machi)
+# Environment (upper-cased $Bin prefix):
+#   <BIN>_VERSION      Override version (default: latest)
+#   <BIN>_INSTALL_DIR  Override install directory (default: %LOCALAPPDATA%\<bin>)
 
 $ErrorActionPreference = "Stop"
 $InformationPreference = "Continue"
 $Repo = "qntx/machi"
 $Bin = "machi"
+
+$BinUpper = $Bin.ToUpper()
+$VerEnv = "${BinUpper}_VERSION"
+$DirEnv = "${BinUpper}_INSTALL_DIR"
 
 function Get-TargetArch {
     try {
@@ -35,9 +38,9 @@ function Add-ToUserPath($Dir) {
     $current = (Get-Item -LiteralPath $reg).GetValue('Path', '', 'DoNotExpandEnvironmentNames') -split ';' -ne ''
     if ($Dir -in $current) { return }
 
-    Set-ItemProperty -Type ExpandString -LiteralPath $reg Path (($Dir, $current) -join ';')
+    Set-ItemProperty -Type ExpandString -LiteralPath $reg Path ((@($Dir) + $current) -join ';')
     # Broadcast WM_SETTINGCHANGE so Explorer picks up the new PATH
-    $k = "machi-" + [guid]::NewGuid().ToString()
+    $k = "$Bin-" + [guid]::NewGuid().ToString()
     [Environment]::SetEnvironmentVariable($k, "1", "User")
     [Environment]::SetEnvironmentVariable($k, [NullString]::value, "User")
 
@@ -46,8 +49,10 @@ function Add-ToUserPath($Dir) {
 
 try {
     $target = Get-TargetArch
-    $ver = if ($env:MACHI_VERSION) { $env:MACHI_VERSION } else { Get-LatestVersion }
-    $dir = if ($env:MACHI_INSTALL_DIR) { $env:MACHI_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "machi" }
+    $envVer = [Environment]::GetEnvironmentVariable($VerEnv)
+    $envDir = [Environment]::GetEnvironmentVariable($DirEnv)
+    $ver = if ($envVer) { $envVer } else { Get-LatestVersion }
+    $dir = if ($envDir) { $envDir } else { Join-Path $env:LOCALAPPDATA $Bin }
 
     Write-Information "Installing $Bin v$ver ($target)"
 

@@ -1,8 +1,12 @@
 //! EVM wallet implementation composing [`kobe_evm`] and [`alloy`].
 //!
-//! [`EvmWallet`] directly embeds [`kobe_evm::DerivedAddress`] (with its
-//! [`Zeroizing`] private key) alongside an [`alloy`] signer and provider,
-//! preserving the full derivation metadata and security chain.
+//! [`EvmWallet`] supports two modes:
+//!
+//! - **Signer-only** (offline) — created via [`from_private_key`](EvmWallet::from_private_key)
+//!   or [`from_mnemonic`](EvmWallet::from_mnemonic). Only signing operations
+//!   are available (x402 payment, message signing, EIP-712). No network needed.
+//! - **Connected** — after calling [`.connect(rpc_url)`](EvmWallet::connect),
+//!   the full on-chain API is available (balance, nonce, transfer, etc.).
 
 use std::sync::Arc;
 
@@ -26,18 +30,17 @@ use crate::wallet::{EvmChain, WalletError};
 /// - **[`alloy::signers::local::PrivateKeySigner`]** — EVM transaction
 ///   and message signing
 /// - **[`alloy::providers::DynProvider`]** — JSON-RPC communication
+///   (only available after [`connect`](Self::connect))
 pub struct EvmWallet {
     /// Derivation info from kobe-evm (present when created via HD derivation).
-    ///
-    /// Contains: derivation path, private key (Zeroizing), public key,
-    /// and checksummed address. `None` when created from a raw private key.
     derived: Option<kobe_evm::DerivedAddress>,
 
     /// Alloy local signer for EVM signing operations.
     signer: PrivateKeySigner,
 
     /// Type-erased JSON-RPC provider for on-chain communication.
-    provider: Arc<DynProvider<Ethereum>>,
+    /// `None` for signer-only (offline) wallets.
+    provider: Option<Arc<DynProvider<Ethereum>>>,
 
     /// EIP-55 checksummed address.
     address: String,
@@ -51,6 +54,7 @@ impl std::fmt::Debug for EvmWallet {
         f.debug_struct("EvmWallet")
             .field("address", &self.address)
             .field("chain", &self.chain)
+            .field("connected", &self.provider.is_some())
             .field(
                 "derivation_path",
                 &self.derived.as_ref().map(|d| d.path.as_str()),
@@ -65,158 +69,152 @@ fn format_signature(bytes: &[u8]) -> String {
 }
 
 impl EvmWallet {
-    /// Create a wallet from a BIP39 mnemonic phrase — derive + connect in one step.
+    /// Create a signer-only wallet from a raw private key hex string.
     ///
-    /// This is the **recommended** constructor for most users. It internally
-    /// creates a [`kobe::Wallet`], derives an Ethereum key via [`kobe_evm::Deriver`],
-    /// and connects to the RPC endpoint.
+    /// This is **synchronous** and requires no network access. The wallet
+    /// can sign messages and x402 payments immediately. Call
+    /// [`.connect(rpc_url)`](Self::connect) to enable on-chain operations.
     ///
-    /// # Arguments
-    ///
-    /// * `mnemonic` — BIP39 mnemonic phrase.
-    /// * `passphrase` — Optional BIP39 passphrase ("25th word").
-    /// * `index` — HD derivation index (Standard path: `m/44'/60'/0'/0/{index}`).
-    /// * `rpc_url` — JSON-RPC endpoint URL.
+    /// Chain defaults to [`EvmChain::Base`].
     ///
     /// # Errors
     ///
-    /// Returns an error if the mnemonic is invalid, derivation fails, or RPC connection fails.
-    pub async fn from_mnemonic(
-        mnemonic: &str,
-        passphrase: Option<&str>,
-        index: u32,
-        rpc_url: &str,
-    ) -> crate::Result<Self> {
-        let hd = kobe::Wallet::from_mnemonic(mnemonic, passphrase)
-            .map_err(|e| WalletError::derivation(format!("invalid mnemonic: {e}")))?;
-        Self::from_wallet(&hd, index, rpc_url).await
-    }
-
-    /// Create a wallet from a BIP39 mnemonic with a specific [`DerivationStyle`].
-    ///
-    /// Convenience wrapper combining [`from_mnemonic`](Self::from_mnemonic) flexibility
-    /// with [`from_wallet_with`](Self::from_wallet_with) derivation style control.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the mnemonic is invalid, derivation fails, or RPC connection fails.
-    pub async fn from_mnemonic_with(
-        mnemonic: &str,
-        passphrase: Option<&str>,
-        style: kobe_evm::DerivationStyle,
-        index: u32,
-        rpc_url: &str,
-    ) -> crate::Result<Self> {
-        let hd = kobe::Wallet::from_mnemonic(mnemonic, passphrase)
-            .map_err(|e| WalletError::derivation(format!("invalid mnemonic: {e}")))?;
-        Self::from_wallet_with(&hd, style, index, rpc_url).await
-    }
-
-    /// Create a wallet from a [`kobe::Wallet`] (HD wallet) with Standard derivation.
-    ///
-    /// Use this when you already hold a `kobe::Wallet` — e.g., for multi-chain
-    /// scenarios where the same mnemonic derives both EVM and Solana keys.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if derivation fails or RPC connection fails.
-    pub async fn from_wallet(
-        wallet: &kobe::Wallet,
-        index: u32,
-        rpc_url: &str,
-    ) -> crate::Result<Self> {
-        let derived = kobe_evm::Deriver::new(wallet)
-            .derive(index)
-            .map_err(|e| WalletError::derivation(format!("ETH derivation failed: {e}")))?;
-        Self::from_derived(derived, rpc_url).await
-    }
-
-    /// Create a wallet from a [`kobe::Wallet`] with a specific [`DerivationStyle`].
-    ///
-    /// Supports Standard (`MetaMask`/Trezor), Ledger Live, and Ledger Legacy paths.
-    ///
-    /// [`DerivationStyle`]: kobe_evm::DerivationStyle
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if derivation fails or RPC connection fails.
-    pub async fn from_wallet_with(
-        wallet: &kobe::Wallet,
-        style: kobe_evm::DerivationStyle,
-        index: u32,
-        rpc_url: &str,
-    ) -> crate::Result<Self> {
-        let derived = kobe_evm::Deriver::new(wallet)
-            .derive_with(style, index)
-            .map_err(|e| WalletError::derivation(format!("ETH derivation failed: {e}")))?;
-        Self::from_derived(derived, rpc_url).await
-    }
-
-    /// Create a wallet from a pre-derived [`kobe_evm::DerivedAddress`].
-    ///
-    /// Use this when you have already derived the key externally.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the signer cannot be created or RPC connection fails.
-    pub async fn from_derived(
-        derived: kobe_evm::DerivedAddress,
-        rpc_url: &str,
-    ) -> crate::Result<Self> {
-        let signer: PrivateKeySigner = derived
-            .private_key_hex
-            .parse()
-            .map_err(|e| WalletError::derivation(format!("signer creation failed: {e}")))?;
-        let address = derived.address.clone();
-
-        Self::build(Some(derived), signer, address, rpc_url).await
-    }
-
-    /// Create a wallet from a [`kobe_evm::StandardWallet`] (non-HD, random key).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if signer creation or RPC connection fails.
-    pub async fn from_standard(
-        standard: &kobe_evm::StandardWallet,
-        rpc_url: &str,
-    ) -> crate::Result<Self> {
-        let signer: PrivateKeySigner = standard
-            .secret_hex()
-            .parse()
-            .map_err(|e| WalletError::derivation(format!("signer creation failed: {e}")))?;
-        let address = signer.address().to_checksum(None);
-
-        Self::build(None, signer, address, rpc_url).await
-    }
-
-    /// Create a wallet from a raw private key hex string (with or without `0x` prefix).
-    ///
-    /// Use this for development, testing, or when importing a standalone key.
-    /// No HD derivation metadata is preserved.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the private key is invalid or RPC connection fails.
-    pub async fn from_private_key(key: &str, rpc_url: &str) -> crate::Result<Self> {
+    /// Returns an error if the private key is invalid.
+    pub fn from_private_key(key: &str) -> crate::Result<Self> {
         let key = key.strip_prefix("0x").unwrap_or(key);
         let signer: PrivateKeySigner = key
             .parse()
             .map_err(|e| WalletError::config(format!("invalid private key: {e}")))?;
         let address = signer.address().to_checksum(None);
 
-        Self::build(None, signer, address, rpc_url).await
+        Ok(Self::new_offline(None, signer, address))
     }
 
-    /// Internal builder shared by all constructors.
-    async fn build(
+    /// Create a signer-only wallet from a BIP39 mnemonic phrase.
+    ///
+    /// Synchronous — derives the key locally with no network access.
+    /// Chain defaults to [`EvmChain::Base`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the mnemonic is invalid or derivation fails.
+    pub fn from_mnemonic(
+        mnemonic: &str,
+        passphrase: Option<&str>,
+        index: u32,
+    ) -> crate::Result<Self> {
+        let hd = kobe::Wallet::from_mnemonic(mnemonic, passphrase)
+            .map_err(|e| WalletError::derivation(format!("invalid mnemonic: {e}")))?;
+        Self::from_hd_wallet(&hd, index)
+    }
+
+    /// Create a signer-only wallet from a BIP39 mnemonic with a specific [`DerivationStyle`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the mnemonic is invalid or derivation fails.
+    pub fn from_mnemonic_with(
+        mnemonic: &str,
+        passphrase: Option<&str>,
+        style: kobe_evm::DerivationStyle,
+        index: u32,
+    ) -> crate::Result<Self> {
+        let hd = kobe::Wallet::from_mnemonic(mnemonic, passphrase)
+            .map_err(|e| WalletError::derivation(format!("invalid mnemonic: {e}")))?;
+        Self::from_hd_wallet_with(&hd, style, index)
+    }
+
+    /// Create a signer-only wallet from a [`kobe::Wallet`] with Standard derivation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if derivation fails.
+    pub fn from_hd_wallet(wallet: &kobe::Wallet, index: u32) -> crate::Result<Self> {
+        let derived = kobe_evm::Deriver::new(wallet)
+            .derive(index)
+            .map_err(|e| WalletError::derivation(format!("ETH derivation failed: {e}")))?;
+        Self::from_derived(derived)
+    }
+
+    /// Create a signer-only wallet from a [`kobe::Wallet`] with a specific [`DerivationStyle`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if derivation fails.
+    pub fn from_hd_wallet_with(
+        wallet: &kobe::Wallet,
+        style: kobe_evm::DerivationStyle,
+        index: u32,
+    ) -> crate::Result<Self> {
+        let derived = kobe_evm::Deriver::new(wallet)
+            .derive_with(style, index)
+            .map_err(|e| WalletError::derivation(format!("ETH derivation failed: {e}")))?;
+        Self::from_derived(derived)
+    }
+
+    /// Create a signer-only wallet from a pre-derived [`kobe_evm::DerivedAddress`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the signer cannot be created.
+    pub fn from_derived(derived: kobe_evm::DerivedAddress) -> crate::Result<Self> {
+        let signer: PrivateKeySigner = derived
+            .private_key_hex
+            .parse()
+            .map_err(|e| WalletError::derivation(format!("signer creation failed: {e}")))?;
+        let address = derived.address.clone();
+
+        Ok(Self::new_offline(Some(derived), signer, address))
+    }
+
+    /// Create a signer-only wallet from a [`kobe_evm::StandardWallet`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if signer creation fails.
+    pub fn from_standard(standard: &kobe_evm::StandardWallet) -> crate::Result<Self> {
+        let signer: PrivateKeySigner = standard
+            .secret_hex()
+            .parse()
+            .map_err(|e| WalletError::derivation(format!("signer creation failed: {e}")))?;
+        let address = signer.address().to_checksum(None);
+
+        Ok(Self::new_offline(None, signer, address))
+    }
+
+    /// Internal constructor for signer-only (offline) wallets.
+    ///
+    /// Defaults to [`EvmChain::Monad`] (chain 143) which is the primary
+    /// x402 payment network. Override with [`.with_chain()`](Self::with_chain)
+    /// or connect via [`.connect()`](Self::connect) to auto-detect.
+    fn new_offline(
         derived: Option<kobe_evm::DerivedAddress>,
         signer: PrivateKeySigner,
         address: String,
-        rpc_url: &str,
-    ) -> crate::Result<Self> {
+    ) -> Self {
+        info!(address = %address, "EVM signer created (offline)");
+
+        Self {
+            derived,
+            signer,
+            provider: None,
+            address,
+            chain: EvmChain::Monad,
+        }
+    }
+
+    /// Connect to a JSON-RPC endpoint, enabling on-chain operations.
+    ///
+    /// Auto-detects the chain ID from the RPC. After this call,
+    /// methods like [`balance()`](Self::balance), [`transfer()`](Self::transfer),
+    /// and all other RPC-dependent operations become available.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC connection or chain ID query fails.
+    pub async fn connect(mut self, rpc_url: &str) -> crate::Result<Self> {
         let provider: DynProvider<Ethereum> = ProviderBuilder::new()
-            .wallet(signer.clone())
+            .wallet(self.signer.clone())
             .connect(rpc_url)
             .await
             .map_err(|e| {
@@ -229,39 +227,45 @@ impl EvmWallet {
             .await
             .map_err(|e| WalletError::provider(format!("failed to get chain ID: {e}")))?;
 
-        let chain = EvmChain::from_id(chain_id);
+        self.chain = EvmChain::from_id(chain_id);
+        self.provider = Some(Arc::new(provider));
 
         info!(
-            address = %address,
-            chain = %chain,
-            path = ?derived.as_ref().map(|d| d.path.as_str()),
+            address = %self.address,
+            chain = %self.chain,
+            path = ?self.derived.as_ref().map(|d| d.path.as_str()),
             "EVM wallet connected",
         );
 
-        Ok(Self {
-            derived,
-            signer,
-            provider: Arc::new(provider),
-            address,
-            chain,
-        })
+        Ok(self)
     }
 
-    /// Override the detected chain after construction.
-    ///
-    /// Useful when the auto-detected chain needs a custom name.
+    /// Override the chain after construction.
     #[must_use]
     pub fn with_chain(mut self, chain: EvmChain) -> Self {
         self.chain = chain;
         self
     }
+
+    /// Returns `true` if this wallet is connected to an RPC endpoint.
+    #[must_use]
+    pub const fn is_connected(&self) -> bool {
+        self.provider.is_some()
+    }
 }
 
 impl EvmWallet {
-    /// Reference to the underlying JSON-RPC [`DynProvider`].
+    /// Reference to the underlying JSON-RPC [`DynProvider`], if connected.
     #[must_use]
-    pub fn provider(&self) -> &DynProvider<Ethereum> {
-        &self.provider
+    pub fn provider(&self) -> Option<&DynProvider<Ethereum>> {
+        self.provider.as_deref()
+    }
+
+    /// Internal helper: require a connected provider or return an error.
+    fn require_provider(&self) -> Result<&DynProvider<Ethereum>, WalletError> {
+        self.provider
+            .as_deref()
+            .ok_or_else(|| WalletError::provider("wallet not connected — call .connect(rpc_url) first"))
     }
 
     /// Reference to the underlying [`PrivateKeySigner`].
@@ -411,7 +415,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the RPC call fails.
     pub async fn balance_of(&self, address: Address) -> Result<U256, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_balance(address)
             .await
             .map_err(|e| WalletError::provider(format!("get_balance failed: {e}")))
@@ -423,7 +427,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the RPC call fails.
     pub async fn block_number(&self) -> Result<u64, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_block_number()
             .await
             .map_err(|e| WalletError::provider(format!("get_block_number failed: {e}")))
@@ -435,7 +439,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the RPC call fails.
     pub async fn gas_price(&self) -> Result<u128, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_gas_price()
             .await
             .map_err(|e| WalletError::provider(format!("get_gas_price failed: {e}")))
@@ -447,7 +451,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the RPC call fails.
     pub async fn nonce(&self) -> Result<u64, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_transaction_count(self.signer.address())
             .await
             .map_err(|e| WalletError::provider(format!("get_transaction_count failed: {e}")))
@@ -461,7 +465,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the RPC call fails.
     pub async fn code_at(&self, address: Address) -> Result<Bytes, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_code_at(address)
             .await
             .map_err(|e| WalletError::provider(format!("get_code failed: {e}")))
@@ -478,7 +482,7 @@ impl EvmWallet {
         &self,
         hash: B256,
     ) -> Result<Option<alloy::rpc::types::TransactionReceipt>, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_transaction_receipt(hash)
             .await
             .map_err(|e| WalletError::provider(format!("get_transaction_receipt failed: {e}")))
@@ -495,7 +499,7 @@ impl EvmWallet {
         &self,
         hash: B256,
     ) -> Result<Option<alloy::rpc::types::Transaction>, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_transaction_by_hash(hash)
             .await
             .map_err(|e| WalletError::provider(format!("get_transaction_by_hash failed: {e}")))
@@ -510,7 +514,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the RPC call fails.
     pub async fn logs(&self, filter: &Filter) -> Result<Vec<Log>, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_logs(filter)
             .await
             .map_err(|e| WalletError::provider(format!("get_logs failed: {e}")))
@@ -522,7 +526,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the RPC call fails.
     pub async fn storage_at(&self, address: Address, key: U256) -> Result<U256, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_storage_at(address, key)
             .await
             .map_err(|e| WalletError::provider(format!("get_storage_at failed: {e}")))
@@ -540,7 +544,7 @@ impl EvmWallet {
         &self,
         id: BlockId,
     ) -> Result<Option<alloy::rpc::types::Block>, WalletError> {
-        self.provider
+        self.require_provider()?
             .get_block(id)
             .await
             .map_err(|e| WalletError::provider(format!("get_block failed: {e}")))
@@ -556,7 +560,7 @@ impl EvmWallet {
     /// Returns an error if the RPC call or estimation fails.
     pub async fn estimate_eip1559_fees(&self) -> Result<(u128, u128), WalletError> {
         let fees = self
-            .provider
+            .require_provider()?
             .estimate_eip1559_fees()
             .await
             .map_err(|e| WalletError::provider(format!("estimate_eip1559_fees failed: {e}")))?;
@@ -586,7 +590,7 @@ impl EvmWallet {
     /// Returns an error if the transaction fails to send or confirm.
     pub async fn send_transaction(&self, tx: TransactionRequest) -> Result<String, WalletError> {
         let receipt = self
-            .provider
+            .require_provider()?
             .send_transaction(tx)
             .await
             .map_err(|e| WalletError::transaction(format!("send_transaction failed: {e}")))?
@@ -603,7 +607,7 @@ impl EvmWallet {
     ///
     /// Returns an error if gas estimation fails.
     pub async fn estimate_gas(&self, tx: TransactionRequest) -> Result<u64, WalletError> {
-        self.provider
+        self.require_provider()?
             .estimate_gas(tx)
             .await
             .map_err(|e| WalletError::transaction(format!("estimate_gas failed: {e}")))
@@ -617,7 +621,7 @@ impl EvmWallet {
     ///
     /// Returns an error if the call fails.
     pub async fn call(&self, tx: TransactionRequest) -> Result<Bytes, WalletError> {
-        self.provider
+        self.require_provider()?
             .call(tx)
             .await
             .map_err(|e| WalletError::provider(format!("eth_call failed: {e}")))
@@ -636,10 +640,9 @@ impl EvmWallet {
     /// ```rust,no_run
     /// use machi::wallet::EvmWallet;
     ///
-    /// # async fn example() -> machi::Result<()> {
-    /// let wallet = EvmWallet::from_private_key("0x...", "https://base-rpc.example.com").await?;
+    /// # fn example() -> machi::Result<()> {
+    /// let wallet = EvmWallet::from_private_key("0x...")?;
     /// let client = wallet.x402_client();
-    /// let body = client.get("https://api.example.com/paid").await?;
     /// # Ok(())
     /// # }
     /// ```

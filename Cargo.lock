@@ -298,6 +298,7 @@ dependencies = [
  "alloy-signer",
  "alloy-sol-types",
  "alloy-transport",
+ "alloy-transport-http",
  "async-stream",
  "async-trait",
  "auto_impl",
@@ -308,11 +309,13 @@ dependencies = [
  "lru",
  "parking_lot",
  "pin-project",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "url",
  "wasmtimer",
 ]
 
@@ -347,14 +350,17 @@ dependencies = [
  "alloy-json-rpc",
  "alloy-primitives",
  "alloy-transport",
+ "alloy-transport-http",
  "futures",
  "pin-project",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
  "tower",
  "tracing",
+ "url",
  "wasmtimer",
 ]
 
@@ -543,7 +549,12 @@ version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bf12879a20e1261cd39c3b101856f52d18886907a826e102538897f0d2b66e"
 dependencies = [
+ "alloy-json-rpc",
  "alloy-transport",
+ "reqwest 0.12.28",
+ "serde_json",
+ "tower",
+ "tracing",
  "url",
 ]
 
@@ -2543,7 +2554,7 @@ dependencies = [
  "r402-http",
  "ra2a",
  "regex",
- "reqwest",
+ "reqwest 0.13.2",
  "reqwest-middleware",
  "rmcp",
  "rusqlite",
@@ -3131,7 +3142,7 @@ dependencies = [
  "async-trait",
  "http",
  "r402",
- "reqwest",
+ "reqwest 0.13.2",
  "reqwest-middleware",
  "serde_json",
  "thiserror 2.0.18",
@@ -3146,7 +3157,7 @@ dependencies = [
  "axum",
  "chrono",
  "futures",
- "reqwest",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3327,6 +3338,38 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
+version = "0.12.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
+dependencies = [
+ "base64",
+ "bytes",
+ "futures-core",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "js-sys",
+ "log",
+ "percent-encoding",
+ "pin-project-lite",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "reqwest"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab3f43e3283ab1488b624b44b0e988d0acea0b3214e694730a055cb6b2efa801"
@@ -3378,7 +3421,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "http",
- "reqwest",
+ "reqwest 0.13.2",
+ "serde",
  "thiserror 2.0.18",
  "tower-service",
 ]
@@ -3469,7 +3513,7 @@ dependencies = [
  "pastey",
  "pin-project-lite",
  "process-wrap",
- "reqwest",
+ "reqwest 0.13.2",
  "rmcp-macros",
  "schemars 1.2.1",
  "serde",
@@ -4681,6 +4725,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+ "serde_derive",
 ]
 
 [[package]]

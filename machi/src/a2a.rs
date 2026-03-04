@@ -72,7 +72,9 @@ impl A2aAgentBuilder {
     pub fn bearer_auth(mut self, token: impl Into<String>) -> Self {
         let value = format!("Bearer {}", token.into());
         if let Ok(v) = value.parse() {
-            self.config.headers.insert(reqwest::header::AUTHORIZATION, v);
+            self.config
+                .headers
+                .insert(reqwest::header::AUTHORIZATION, v);
         }
         self
     }
@@ -105,7 +107,7 @@ impl A2aAgentBuilder {
 
     /// Set the request timeout in seconds.
     #[must_use]
-    pub fn timeout(mut self, secs: u64) -> Self {
+    pub const fn timeout(mut self, secs: u64) -> Self {
         self.config.timeout_secs = secs;
         self
     }

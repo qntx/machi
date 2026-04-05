@@ -440,13 +440,9 @@ impl McpServer {
         if let Some(args) = args_obj {
             params = params.with_arguments(args);
         }
-        let result: CallToolResult = svc
-            .peer()
-            .call_tool(params)
-            .await
-            .map_err(|e| {
-                ToolError::Execution(format!("MCP tool '{tool_name}' call failed: {e}"))
-            })?;
+        let result: CallToolResult = svc.peer().call_tool(params).await.map_err(|e| {
+            ToolError::Execution(format!("MCP tool '{tool_name}' call failed: {e}"))
+        })?;
 
         // Check if the server reported an error.
         if result.is_error == Some(true) {

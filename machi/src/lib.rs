@@ -56,9 +56,9 @@
 #[cfg(feature = "a2a")]
 pub mod a2a;
 pub mod agent;
-pub mod context;
 pub mod audio;
 pub mod chat;
+pub mod context;
 pub mod embedding;
 pub mod error;
 pub mod guardrail;
@@ -67,8 +67,8 @@ pub mod llms;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod memory;
-pub mod middleware;
 pub mod message;
+pub mod middleware;
 pub mod prelude;
 pub mod stream;
 pub mod tool;

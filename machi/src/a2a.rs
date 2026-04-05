@@ -334,10 +334,7 @@ impl A2aAgent {
     }
 
     /// Extract text from a list of artifacts into the output buffer.
-    fn collect_artifact_text(
-        artifacts: &[ra2a::types::Artifact],
-        output: &mut String,
-    ) {
+    fn collect_artifact_text(artifacts: &[ra2a::types::Artifact], output: &mut String) {
         for artifact in artifacts {
             for part in &artifact.parts {
                 if let Some(text) = part.as_text() {

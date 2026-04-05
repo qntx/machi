@@ -35,8 +35,8 @@
 
 use async_trait::async_trait;
 
-use crate::message::Message;
 use crate::Result;
+use crate::message::Message;
 
 /// A shared, thread-safe [`ContextStrategy`] trait object.
 pub type SharedContextStrategy = std::sync::Arc<dyn ContextStrategy>;

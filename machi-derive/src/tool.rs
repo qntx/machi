@@ -13,14 +13,6 @@
 
 // False positive: clippy misinterprets darling's `default` attribute as `if !default`
 #![allow(clippy::if_not_else)]
-// Proc-macro internals: doc completeness and shadow lints are less critical here.
-#![allow(
-    missing_docs,
-    clippy::missing_docs_in_private_items,
-    clippy::doc_markdown,
-    clippy::expect_used,
-    clippy::shadow_unrelated
-)]
 
 use std::collections::HashMap;
 
@@ -535,10 +527,8 @@ impl ParamInfo {
 }
 
 /// Main implementation of the tool macro.
-#[allow(clippy::too_many_lines)]
 pub fn tool_impl(args: TokenStream, input: TokenStream) -> TokenStream {
     // Parse macro arguments using darling
-    #[allow(clippy::shadow_reuse)]
     let macro_args = match ToolArgs::from_args(args) {
         Ok(args) => args,
         Err(err) => return TokenStream::from(err.write_errors()),

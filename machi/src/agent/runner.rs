@@ -32,9 +32,7 @@ use crate::{
     guardrail::{InputGuardrail, InputGuardrailResult, OutputGuardrail, OutputGuardrailResult},
     hooks::{Hooks, NoopHooks, RunContext},
     message::Message,
-    middleware::{
-        self, MiddlewareContext, SharedMiddleware, ToolCallAction,
-    },
+    middleware::{self, MiddlewareContext, SharedMiddleware, ToolCallAction},
     stream::{StreamAggregator, StreamChunk},
     tool::{
         BoxedTool, ConcurrencyMode, ConfirmationHandler, ToolConfirmationRequest,
@@ -705,7 +703,6 @@ impl Runner {
     ///
     /// Results are appended to `messages` in the original call order regardless
     /// of execution order.
-    #[allow(clippy::too_many_arguments)]
     async fn execute_tool_calls(
         calls: &[ToolCallRequest],
         agent: &Agent,
@@ -817,8 +814,8 @@ impl Runner {
                         };
                     }
                     Ok(ToolCallAction::Replace { result }) => {
-                        let result_str = serde_json::to_string(&result)
-                            .unwrap_or_else(|_| result.to_string());
+                        let result_str =
+                            serde_json::to_string(&result).unwrap_or_else(|_| result.to_string());
                         return ToolCallRecord {
                             id: call.id.clone(),
                             name: call.name.clone(),
@@ -862,8 +859,14 @@ impl Runner {
             // Run post-tool middleware.
             if !mw.is_empty() {
                 let mw_ctx = MiddlewareContext::new(context.clone(), agent_name.to_owned());
-                if let Err(err) =
-                    middleware::run_tool_result_middleware(mw, &mw_ctx, &call.name, &result_str, success).await
+                if let Err(err) = middleware::run_tool_result_middleware(
+                    mw,
+                    &mw_ctx,
+                    &call.name,
+                    &result_str,
+                    success,
+                )
+                .await
                 {
                     warn!(tool = %call.name, error = %err, "Post-tool middleware error");
                 }

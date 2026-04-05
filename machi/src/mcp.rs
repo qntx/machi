@@ -436,14 +436,13 @@ impl McpServer {
         };
 
         let svc = self.service.read().await;
+        let mut params = CallToolRequestParams::new(tool_name.clone());
+        if let Some(args) = args_obj {
+            params = params.with_arguments(args);
+        }
         let result: CallToolResult = svc
             .peer()
-            .call_tool(CallToolRequestParams {
-                meta: None,
-                name: tool_name.clone(),
-                arguments: args_obj,
-                task: None,
-            })
+            .call_tool(params)
             .await
             .map_err(|e| {
                 ToolError::Execution(format!("MCP tool '{tool_name}' call failed: {e}"))

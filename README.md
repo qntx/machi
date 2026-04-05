@@ -1,9 +1,11 @@
+<!-- markdownlint-disable MD033 MD041 MD036 -->
+
 # Machi
 
 [![Crates.io](https://img.shields.io/crates/v/machi.svg)](https://crates.io/crates/machi)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
 
-A Web3-native AI Agent Framework with embedded wallet capabilities.
+A lightweight, ergonomic AI Agent Framework.
 
 ## License
 

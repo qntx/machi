@@ -36,7 +36,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures::StreamExt;
 use ra2a::client::{Client, JsonRpcTransport, TransportConfig};
-use ra2a::types::{AgentCard, Event, Message as A2aMessage, MessageSendParams};
+use ra2a::types::{AgentCard, Message as A2aMessage, SendMessageRequest, StreamResponse};
 use serde_json::Value;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
@@ -134,7 +134,7 @@ impl A2aAgentBuilder {
             ))
         })?;
 
-        let client = Client::new(Box::new(transport)).with_base_url(&url);
+        let client = Client::new(Box::new(transport));
 
         // Fetch agent card to discover capabilities.
         let card = client.get_agent_card().await.map_err(|e| {
@@ -263,10 +263,10 @@ impl A2aAgent {
     ///
     /// Returns an error if the message fails to send or the response stream encounters an error.
     pub async fn send_message(&self, message: A2aMessage) -> Result<String, ToolError> {
-        let params = MessageSendParams::new(message);
+        let request = SendMessageRequest::new(message);
         let mut stream = self
             .client
-            .send_message_stream(&params)
+            .send_streaming_message(&request)
             .await
             .map_err(|e| {
                 ToolError::Execution(format!("A2A agent '{}' send failed: {e}", self.name))
@@ -284,10 +284,10 @@ impl A2aAgent {
         Ok(output)
     }
 
-    /// Extract text content from an [`Event`] and append it to the output buffer.
-    fn collect_event_text(event: &Event, output: &mut String) {
+    /// Extract text content from a [`StreamResponse`] and append it to the output buffer.
+    fn collect_event_text(event: &StreamResponse, output: &mut String) {
         match event {
-            Event::Message(msg) => {
+            StreamResponse::Message(msg) => {
                 if let Some(text) = msg.text_content() {
                     if !output.is_empty() {
                         output.push('\n');
@@ -295,7 +295,7 @@ impl A2aAgent {
                     output.push_str(&text);
                 }
             }
-            Event::StatusUpdate(update) => {
+            StreamResponse::StatusUpdate(update) => {
                 // Extract text from the status message if available.
                 if let Some(ref msg) = update.status.message
                     && let Some(text) = msg.text_content()
@@ -306,7 +306,7 @@ impl A2aAgent {
                     output.push_str(&text);
                 }
             }
-            Event::ArtifactUpdate(update) => {
+            StreamResponse::ArtifactUpdate(update) => {
                 // Extract text from artifact parts.
                 for part in &update.artifact.parts {
                     if let Some(text) = part.as_text() {
@@ -317,7 +317,7 @@ impl A2aAgent {
                     }
                 }
             }
-            Event::Task(task) => {
+            StreamResponse::Task(task) => {
                 // Extract text from the task status message.
                 if let Some(ref msg) = task.status.message
                     && let Some(text) = msg.text_content()

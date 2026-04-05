@@ -11,10 +11,141 @@
 //! - Compatible with both Chat Completions and Responses APIs
 
 use std::fmt;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// Concurrency mode for a tool, describing how it interacts with parallel execution.
+///
+/// The [`Runner`](crate::agent::Runner) uses this to schedule tool calls intelligently:
+/// - `ReadOnly` tools run concurrently with everything except `Exclusive` tools.
+/// - `Safe` tools run concurrently with other `Safe` and `ReadOnly` tools.
+/// - `Exclusive` tools run one at a time with no other tools executing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ConcurrencyMode {
+    /// Tool only reads state and can safely run alongside any non-exclusive tool.
+    ReadOnly,
+    /// Tool may mutate state but is safe to run concurrently with other `Safe`
+    /// and `ReadOnly` tools (the default).
+    #[default]
+    Safe,
+    /// Tool requires exclusive access — no other tools run while it executes.
+    Exclusive,
+}
+
+/// How destructive a tool's effects are.
+///
+/// This metadata helps the [`Runner`](crate::agent::Runner) and middleware make
+/// informed decisions about confirmation, logging, and error handling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum Destructiveness {
+    /// Tool has no destructive side effects (the default).
+    #[default]
+    None,
+    /// Tool's effects can be undone (e.g., file write with backup).
+    Reversible,
+    /// Tool's effects are permanent (e.g., delete, send email).
+    Irreversible,
+}
+
+/// How a tool should behave when the agent run is interrupted or cancelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum InterruptBehavior {
+    /// Drop the tool call immediately without waiting (the default).
+    #[default]
+    Drop,
+    /// Wait for the tool to finish before acknowledging the interruption.
+    WaitComplete,
+    /// Actively abort the tool's operation.
+    Abort,
+}
+
+/// Behavioral metadata for a tool, informing the runner's scheduling and
+/// safety decisions.
+///
+/// Tools provide metadata via [`DynTool::metadata`]. The runner uses this to:
+/// - Schedule tool calls with appropriate concurrency
+///   ([`ConcurrencyMode`]).
+/// - Handle interruptions gracefully ([`InterruptBehavior`]).
+/// - Enforce timeouts.
+///
+/// All fields default to the most permissive/safe values, so tools that don't
+/// override [`DynTool::metadata`] behave exactly as before.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolMetadata {
+    /// How this tool interacts with concurrent execution.
+    pub concurrency: ConcurrencyMode,
+    /// How destructive the tool's effects are.
+    pub destructiveness: Destructiveness,
+    /// How the tool should respond to interruptions.
+    pub interrupt_behavior: InterruptBehavior,
+    /// Optional per-tool execution timeout.
+    pub timeout: Option<Duration>,
+}
+
+impl Default for ToolMetadata {
+    fn default() -> Self {
+        Self {
+            concurrency: ConcurrencyMode::Safe,
+            destructiveness: Destructiveness::None,
+            interrupt_behavior: InterruptBehavior::Drop,
+            timeout: None,
+        }
+    }
+}
+
+impl ToolMetadata {
+    /// Create metadata for a read-only tool.
+    #[must_use]
+    pub fn read_only() -> Self {
+        Self {
+            concurrency: ConcurrencyMode::ReadOnly,
+            ..Self::default()
+        }
+    }
+
+    /// Create metadata for an exclusive tool.
+    #[must_use]
+    pub fn exclusive() -> Self {
+        Self {
+            concurrency: ConcurrencyMode::Exclusive,
+            ..Self::default()
+        }
+    }
+
+    /// Set the concurrency mode.
+    #[must_use]
+    pub const fn with_concurrency(mut self, mode: ConcurrencyMode) -> Self {
+        self.concurrency = mode;
+        self
+    }
+
+    /// Set the destructiveness level.
+    #[must_use]
+    pub const fn with_destructiveness(mut self, level: Destructiveness) -> Self {
+        self.destructiveness = level;
+        self
+    }
+
+    /// Set the interrupt behavior.
+    #[must_use]
+    pub const fn with_interrupt_behavior(mut self, behavior: InterruptBehavior) -> Self {
+        self.interrupt_behavior = behavior;
+        self
+    }
+
+    /// Set an execution timeout.
+    #[must_use]
+    pub const fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+}
 
 /// Error type for tool execution failures.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -241,6 +372,14 @@ pub trait Tool: Send + Sync {
         }
     }
 
+    /// Return behavioral metadata for this tool.
+    ///
+    /// The default returns [`ToolMetadata::default()`] (safe concurrency, non-destructive,
+    /// drop on interrupt, no timeout). Override this to provide tool-specific metadata.
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::default()
+    }
+
     /// Call the tool with JSON arguments and return JSON output.
     async fn call_json(&self, args: Value) -> Result<Value, ToolError>
     where
@@ -275,6 +414,11 @@ pub trait DynTool: Send + Sync {
     /// Get the tool definition.
     fn definition(&self) -> ToolDefinition;
 
+    /// Return behavioral metadata for this tool.
+    fn metadata(&self) -> ToolMetadata {
+        ToolMetadata::default()
+    }
+
     /// Call the tool with JSON arguments.
     async fn call_json(&self, args: Value) -> Result<Value, ToolError>;
 }
@@ -294,6 +438,10 @@ where
 
     fn definition(&self) -> ToolDefinition {
         Tool::definition(self)
+    }
+
+    fn metadata(&self) -> ToolMetadata {
+        Tool::metadata(self)
     }
 
     async fn call_json(&self, args: Value) -> Result<Value, ToolError> {

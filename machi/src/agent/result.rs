@@ -13,12 +13,14 @@ use std::fmt;
 use serde_json::Value;
 
 use crate::chat::ChatResponse;
+use crate::context::SharedContextStrategy;
 use crate::guardrail::{
     InputGuardrail, InputGuardrailResult, OutputGuardrail, OutputGuardrailResult,
 };
 use crate::hooks::SharedHooks;
 use crate::memory::SharedSession;
 use crate::message::{Content, ContentPart, ImageMime, Message, Role, ToolCall};
+use crate::middleware::SharedMiddleware;
 use crate::tool::SharedConfirmationHandler;
 use crate::usage::Usage;
 
@@ -115,6 +117,23 @@ pub struct RunConfig {
     /// These are combined with the agent's own [`output_guardrails`](crate::agent::Agent::output_guardrails)
     /// and executed together after the agent produces a final output.
     pub output_guardrails: Vec<OutputGuardrail>,
+
+    /// Context compaction strategy applied before each LLM call.
+    ///
+    /// When set, the runner compacts the message list using this strategy
+    /// before building the [`ChatRequest`](crate::chat::ChatRequest), keeping
+    /// the conversation within the LLM's context window.
+    ///
+    /// Defaults to [`None`] (no compaction — messages accumulate unboundedly).
+    pub context_strategy: Option<SharedContextStrategy>,
+
+    /// Middleware pipeline for intercepting and modifying execution.
+    ///
+    /// Unlike [`Hooks`](crate::hooks::Hooks) which are purely observational,
+    /// middleware can reject tool calls, transform requests, and short-circuit
+    /// execution. Middleware runs in order for pre-execution events and in
+    /// reverse for post-execution events (onion pattern).
+    pub middleware: Vec<SharedMiddleware>,
 }
 
 impl fmt::Debug for RunConfig {
@@ -127,6 +146,8 @@ impl fmt::Debug for RunConfig {
             .field("confirmation_handler", &self.confirmation_handler.is_some())
             .field("input_guardrails", &self.input_guardrails.len())
             .field("output_guardrails", &self.output_guardrails.len())
+            .field("context_strategy", &self.context_strategy.is_some())
+            .field("middleware", &self.middleware.len())
             .finish()
     }
 }
@@ -184,6 +205,37 @@ impl RunConfig {
     #[must_use]
     pub fn output_guardrail(mut self, guardrail: OutputGuardrail) -> Self {
         self.output_guardrails.push(guardrail);
+        self
+    }
+
+    /// Set a context compaction strategy.
+    ///
+    /// The strategy is applied before each LLM call to keep the message
+    /// list within the model's context window.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::sync::Arc;
+    /// use machi::agent::RunConfig;
+    /// use machi::context::SlidingWindow;
+    ///
+    /// let config = RunConfig::new()
+    ///     .context_strategy(Arc::new(SlidingWindow::new(50)));
+    /// ```
+    #[must_use]
+    pub fn context_strategy(mut self, strategy: SharedContextStrategy) -> Self {
+        self.context_strategy = Some(strategy);
+        self
+    }
+
+    /// Add a middleware to the pipeline.
+    ///
+    /// Middleware runs in the order added for pre-execution events,
+    /// and in reverse order for post-execution events (onion pattern).
+    #[must_use]
+    pub fn middleware(mut self, mw: SharedMiddleware) -> Self {
+        self.middleware.push(mw);
         self
     }
 }

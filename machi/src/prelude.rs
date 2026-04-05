@@ -10,6 +10,9 @@ pub use machi_derive::tool;
 pub use crate::agent::{
     Agent, AgentError, RunConfig, RunEvent, RunResult, Runner, StepInfo, ToolCallRecord, UserInput,
 };
+pub use crate::context::{
+    ContextStrategy, NoCompaction, SharedContextStrategy, SlidingWindow, TokenBudget,
+};
 pub use crate::chat::{
     ChatProvider, ChatRequest, ChatResponse, ResponseFormat, SharedChatProvider,
 };
@@ -23,9 +26,11 @@ pub use crate::llms::{Ollama, OllamaConfig};
 #[cfg(feature = "openai")]
 pub use crate::llms::{OpenAI, OpenAIConfig};
 pub use crate::message::{ContentPart, Message, Role};
+pub use crate::middleware::{Middleware, MiddlewareContext, SharedMiddleware, ToolCallAction};
 pub use crate::stream::{StopReason, StreamChunk};
 pub use crate::tool::{
-    BoxedTool, ConfirmationHandler, DynTool, Tool, ToolConfirmationRequest,
-    ToolConfirmationResponse, ToolDefinition, ToolError, ToolExecutionPolicy, ToolResult,
+    BoxedTool, ConcurrencyMode, ConfirmationHandler, Destructiveness, DynTool,
+    InterruptBehavior, Tool, ToolConfirmationRequest, ToolConfirmationResponse, ToolDefinition,
+    ToolError, ToolExecutionPolicy, ToolMetadata, ToolResult,
 };
 pub use crate::usage::Usage;

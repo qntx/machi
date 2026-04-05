@@ -27,14 +27,18 @@ use super::{
 };
 use crate::{
     chat::{ChatProvider, ChatRequest, ChatResponse, ToolChoice},
+    context::SharedContextStrategy,
     error::{AgentError, Error, Result},
     guardrail::{InputGuardrail, InputGuardrailResult, OutputGuardrail, OutputGuardrailResult},
     hooks::{Hooks, NoopHooks, RunContext},
     message::Message,
+    middleware::{
+        self, MiddlewareContext, SharedMiddleware, ToolCallAction,
+    },
     stream::{StreamAggregator, StreamChunk},
     tool::{
-        BoxedTool, ConfirmationHandler, ToolConfirmationRequest, ToolConfirmationResponse,
-        ToolDefinition, ToolExecutionPolicy,
+        BoxedTool, ConcurrencyMode, ConfirmationHandler, ToolConfirmationRequest,
+        ToolConfirmationResponse, ToolDefinition, ToolExecutionPolicy,
     },
     usage::Usage,
 };
@@ -66,6 +70,8 @@ struct RunState<'a> {
     max_steps: usize,
     max_tool_concurrency: Option<usize>,
     structured_output: bool,
+    context_strategy: Option<SharedContextStrategy>,
+    middleware: Vec<SharedMiddleware>,
 }
 
 impl<'a> RunState<'a> {
@@ -143,6 +149,8 @@ impl<'a> RunState<'a> {
             max_steps,
             max_tool_concurrency: config.max_tool_concurrency,
             structured_output: agent.output_schema.is_some(),
+            context_strategy: config.context_strategy.clone(),
+            middleware: config.middleware.clone(),
         })
     }
 
@@ -151,16 +159,30 @@ impl<'a> RunState<'a> {
         (!self.system_prompt.is_empty()).then_some(self.system_prompt.as_str())
     }
 
-    /// Build a [`ChatRequest`] for the current step.
-    fn build_request(&self) -> ChatRequest {
-        Runner::build_request(self.agent, &self.messages, &self.all_definitions)
+    /// Build a [`ChatRequest`] for the current step, applying context
+    /// compaction if a strategy is configured.
+    async fn build_request(&mut self) -> Result<ChatRequest> {
+        if let Some(ref strategy) = self.context_strategy {
+            let compacted = strategy.compact(&self.messages).await?;
+            Ok(Runner::build_request(
+                self.agent,
+                &compacted,
+                &self.all_definitions,
+            ))
+        } else {
+            Ok(Runner::build_request(
+                self.agent,
+                &self.messages,
+                &self.all_definitions,
+            ))
+        }
     }
 
     /// Build a streaming [`ChatRequest`] for the current step.
-    fn build_stream_request(&self) -> ChatRequest {
-        let mut req = self.build_request();
+    async fn build_stream_request(&mut self) -> Result<ChatRequest> {
+        let mut req = self.build_request().await?;
         req.stream = true;
-        req
+        Ok(req)
     }
 
     /// Accumulate usage from an LLM response into the running totals.
@@ -261,6 +283,7 @@ impl<'a> RunState<'a> {
                     agent_name,
                     &mut self.messages,
                     self.max_tool_concurrency,
+                    &self.middleware,
                 )
                 .await?;
 
@@ -311,6 +334,7 @@ impl<'a> RunState<'a> {
                         agent_name,
                         &mut self.messages,
                         self.max_tool_concurrency,
+                        &self.middleware,
                     )
                     .await?
                 };
@@ -370,7 +394,14 @@ impl Runner {
             state.context.advance_step();
             debug!(agent = %agent.name, step, "Starting step");
 
-            let request = state.build_request();
+            let request = state.build_request().await?;
+
+            // Run pre-LLM middleware.
+            if !state.middleware.is_empty() {
+                let mw_ctx = MiddlewareContext::new(state.context.clone(), agent.name.clone());
+                middleware::run_llm_request_middleware(&state.middleware, &mw_ctx, &state.messages)
+                    .await?;
+            }
 
             hooks
                 .on_llm_start(
@@ -468,7 +499,18 @@ impl Runner {
 
                 yield RunEvent::StepStarted { step };
 
-                let request = state.build_stream_request();
+                let request = state.build_stream_request().await?;
+
+                // Run pre-LLM middleware.
+                if !state.middleware.is_empty() {
+                    let mw_ctx = MiddlewareContext::new(state.context.clone(), agent.name.clone());
+                    middleware::run_llm_request_middleware(
+                        &state.middleware,
+                        &mw_ctx,
+                        &state.messages,
+                    )
+                    .await?;
+                }
 
                 hooks
                     .on_llm_start(&state.context, &agent.name, state.system_ref(), &state.messages)
@@ -654,7 +696,15 @@ impl Runner {
         (result, forbidden)
     }
 
-    /// Execute tool calls with bounded concurrency, appending results to messages.
+    /// Execute tool calls with metadata-aware scheduling, appending results to messages.
+    ///
+    /// Scheduling strategy based on [`ConcurrencyMode`]:
+    /// 1. All `ReadOnly` and `Safe` calls in a batch run concurrently (respecting
+    ///    `max_concurrency`).
+    /// 2. `Exclusive` calls run one at a time, after all concurrent calls finish.
+    ///
+    /// Results are appended to `messages` in the original call order regardless
+    /// of execution order.
     async fn execute_tool_calls(
         calls: &[ToolCallRequest],
         agent: &Agent,
@@ -663,19 +713,56 @@ impl Runner {
         agent_name: &str,
         messages: &mut Vec<Message>,
         max_concurrency: Option<usize>,
+        mw: &[SharedMiddleware],
     ) -> Result<Vec<ToolCallRecord>> {
-        let concurrency = max_concurrency.unwrap_or(calls.len()).max(1);
-        let mut records = Vec::with_capacity(calls.len());
+        // Partition calls by concurrency mode.
+        let mut concurrent_calls: Vec<&ToolCallRequest> = Vec::new();
+        let mut exclusive_calls: Vec<&ToolCallRequest> = Vec::new();
 
-        for chunk in calls.chunks(concurrency) {
-            let mut futs = Vec::with_capacity(chunk.len());
-            for call in chunk {
-                futs.push(Self::execute_single_tool(
-                    call, agent, context, hooks, agent_name,
-                ));
+        for call in calls {
+            let mode = Self::tool_concurrency_mode(call, agent);
+            match mode {
+                ConcurrencyMode::ReadOnly | ConcurrencyMode::Safe => {
+                    concurrent_calls.push(call);
+                }
+                ConcurrencyMode::Exclusive => {
+                    exclusive_calls.push(call);
+                }
             }
-            records.extend(futures::future::join_all(futs).await);
         }
+
+        let mut all_records: Vec<(usize, ToolCallRecord)> = Vec::with_capacity(calls.len());
+
+        // Phase 1: Run concurrent calls in bounded batches.
+        if !concurrent_calls.is_empty() {
+            let concurrency = max_concurrency.unwrap_or(concurrent_calls.len()).max(1);
+            for chunk in concurrent_calls.chunks(concurrency) {
+                let mut futs = Vec::with_capacity(chunk.len());
+                for &call in chunk {
+                    let idx = calls.iter().position(|c| c.id == call.id).unwrap_or(0);
+                    let fut = async move {
+                        let record =
+                            Self::execute_single_tool(call, agent, context, hooks, agent_name, mw)
+                                .await;
+                        (idx, record)
+                    };
+                    futs.push(fut);
+                }
+                all_records.extend(futures::future::join_all(futs).await);
+            }
+        }
+
+        // Phase 2: Run exclusive calls sequentially.
+        for &call in &exclusive_calls {
+            let idx = calls.iter().position(|c| c.id == call.id).unwrap_or(0);
+            let record =
+                Self::execute_single_tool(call, agent, context, hooks, agent_name, mw).await;
+            all_records.push((idx, record));
+        }
+
+        // Sort by original call order for deterministic message ordering.
+        all_records.sort_by_key(|(idx, _)| *idx);
+        let records: Vec<ToolCallRecord> = all_records.into_iter().map(|(_, r)| r).collect();
 
         for record in &records {
             messages.push(Message::tool(&record.id, &record.result));
@@ -684,13 +771,24 @@ impl Runner {
         Ok(records)
     }
 
-    /// Execute a single tool call with lifecycle hooks and tracing.
+    /// Look up the concurrency mode for a tool call.
+    fn tool_concurrency_mode(call: &ToolCallRequest, agent: &Agent) -> ConcurrencyMode {
+        // Check regular tools first.
+        if let Some(tool) = agent.tools.iter().find(|t| t.name() == call.name) {
+            return tool.metadata().concurrency;
+        }
+        // Managed agents default to Safe (they run their own isolated sub-run).
+        ConcurrencyMode::Safe
+    }
+
+    /// Execute a single tool call with lifecycle hooks, middleware, and tracing.
     async fn execute_single_tool(
         call: &ToolCallRequest,
         agent: &Agent,
         context: &RunContext,
         hooks: &dyn Hooks,
         agent_name: &str,
+        mw: &[SharedMiddleware],
     ) -> ToolCallRecord {
         let tool_span = info_span!(
             "tool",
@@ -703,6 +801,46 @@ impl Runner {
         );
 
         async {
+            // Run pre-tool middleware.
+            if !mw.is_empty() {
+                let mw_ctx = MiddlewareContext::new(context.clone(), agent_name.to_owned());
+                match middleware::run_tool_call_middleware(mw, &mw_ctx, call).await {
+                    Ok(ToolCallAction::Skip { result }) => {
+                        return ToolCallRecord {
+                            id: call.id.clone(),
+                            name: call.name.clone(),
+                            arguments: call.arguments.clone(),
+                            result,
+                            success: true,
+                            sub_usage: Usage::zero(),
+                        };
+                    }
+                    Ok(ToolCallAction::Replace { result }) => {
+                        let result_str = serde_json::to_string(&result)
+                            .unwrap_or_else(|_| result.to_string());
+                        return ToolCallRecord {
+                            id: call.id.clone(),
+                            name: call.name.clone(),
+                            arguments: call.arguments.clone(),
+                            result: result_str,
+                            success: true,
+                            sub_usage: Usage::zero(),
+                        };
+                    }
+                    Ok(ToolCallAction::Execute) => {} // proceed normally
+                    Err(err) => {
+                        return ToolCallRecord {
+                            id: call.id.clone(),
+                            name: call.name.clone(),
+                            arguments: call.arguments.clone(),
+                            result: format!("Middleware rejected: {err}"),
+                            success: false,
+                            sub_usage: Usage::zero(),
+                        };
+                    }
+                }
+            }
+
             hooks.on_tool_start(context, agent_name, &call.name).await;
 
             let (result_str, success, sub_usage) =
@@ -719,6 +857,16 @@ impl Runner {
                         Usage::zero(),
                     )
                 };
+
+            // Run post-tool middleware.
+            if !mw.is_empty() {
+                let mw_ctx = MiddlewareContext::new(context.clone(), agent_name.to_owned());
+                if let Err(err) =
+                    middleware::run_tool_result_middleware(mw, &mw_ctx, &call.name, &result_str, success).await
+                {
+                    warn!(tool = %call.name, error = %err, "Post-tool middleware error");
+                }
+            }
 
             let current = tracing::Span::current();
             current.record("tool.success", success);

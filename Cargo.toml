@@ -9,7 +9,7 @@ version = "0.8.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/machi"
-description = "A Web3-native AI Agent Framework"
+description = "A lightweight, ergonomic AI Agent Framework"
 keywords = ["ai", "agent", "llm", "openai", "ollama"]
 categories = ["api-bindings", "asynchronous"]
 
@@ -17,55 +17,34 @@ categories = ["api-bindings", "asynchronous"]
 machi = { version = "0.8", path = "machi" }
 machi-derive = { version = "0.8", path = "machi-derive" }
 
-alloy = { version = "1", default-features = false, features = [
-    "signers",
-    "signer-local",
-    "provider-http",
-    "reqwest",
-    "network",
-    "consensus",
-    "sol-types",
-    "rpc-types",
-    "k256",
-] }
-async-stream = "0.3"
-async-trait = "0.1"
-base64 = "0.22"
+async-stream = "0.3.6"
+async-trait = "0.1.89"
+base64 = "0.22.1"
 convert_case = "0.11.0"
 darling = "0.23.0"
-futures = "0.3"
-kobe = { version = "0.5", default-features = false, features = ["std", "rand"] }
-kobe-evm = { version = "0.5", default-features = false, features = [
-    "std",
-    "rand",
-] }
-proc-macro2 = "1.0"
-quote = "1.0"
-ra2a = "0.8"
-regex = "1.11"
-reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }
-reqwest-middleware = { version = "0.5", features = ["json", "multipart"] }
-rmcp = { version = "0.16", features = [
+futures = "0.3.32"
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+ra2a = "0.9.3"
+regex = "1.12.3"
+reqwest = { version = "0.13.2", features = ["json", "stream", "multipart"] }
+reqwest-middleware = { version = "0.5.1", features = ["json", "multipart"] }
+rmcp = { version = "1.3.0", features = [
     "client",
     "transport-child-process",
     "transport-streamable-http-client-reqwest",
 ] }
-r402 = { version = "0.12", default-features = false }
-r402-evm = { version = "0.12", default-features = false, features = ["client"] }
-r402-http = { version = "0.12", default-features = false, features = [
-    "client",
-] }
-rusqlite = { version = "0.38.0", features = ["bundled"] }
-schemars = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
-thiserror = "2.0"
-tokio = { version = "1.44", default-features = false, features = ["sync"] }
-tokio-test = "0.4"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.16", features = ["v4", "serde"] }
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+schemars = "1.2.1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+syn = { version = "2.0.117", features = ["full", "extra-traits", "parsing"] }
+thiserror = "2.0.18"
+tokio = { version = "1.51.0", default-features = false, features = ["sync", "macros", "process"] }
+tokio-test = "0.4.5"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.23.0", features = ["v4", "serde"] }
 
 [profile.release]
 codegen-units = 1
@@ -90,92 +69,55 @@ inherits = "release"
 
 [workspace.lints.rust]
 elided_lifetimes_in_paths = "warn"
-single_use_lifetimes = "warn"
-unused_lifetimes = "warn"
 missing_copy_implementations = "warn"
 missing_debug_implementations = "warn"
 missing_docs = "warn"
+rust_2024_compatibility = { level = "warn", priority = -1 }
+single_use_lifetimes = "warn"
 trivial_casts = "warn"
 trivial_numeric_casts = "warn"
-variant_size_differences = "warn"
 unsafe_code = "warn"
+unused_lifetimes = "warn"
 unused_qualifications = "warn"
-rust_2024_compatibility = { level = "warn", priority = -1 }
-unused_imports = "warn"
-unused_macro_rules = "warn"
-non_ascii_idents = "warn"
-non_camel_case_types = "warn"
-non_snake_case = "warn"
-non_upper_case_globals = "warn"
-
-[workspace.lints.rustdoc]
-broken_intra_doc_links = "warn"
-private_intra_doc_links = "warn"
-missing_crate_level_docs = "warn"
-invalid_codeblock_attributes = "warn"
-invalid_html_tags = "warn"
-invalid_rust_codeblocks = "warn"
-bare_urls = "warn"
-unescaped_backticks = "warn"
+variant_size_differences = "warn"
 
 [workspace.lints.clippy]
 cargo = { level = "warn", priority = -1 }
+clone_on_ref_ptr = "warn"
 complexity = { level = "warn", priority = -1 }
 correctness = { level = "deny", priority = -1 }
-nursery = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-perf = { level = "warn", priority = -1 }
-style = { level = "warn", priority = -1 }
-suspicious = { level = "warn", priority = -1 }
-restriction = { level = "allow", priority = -1 }
 dbg_macro = "warn"
-print_stderr = "warn"
-print_stdout = "warn"
-todo = "warn"
-unimplemented = "warn"
-panic = "warn"
-unwrap_used = "warn"
-unwrap_in_result = "warn"
-expect_used = "allow"
-panic_in_result_fn = "warn"
-indexing_slicing = "allow"
-fallible_impl_from = "warn"
-missing_docs_in_private_items = "allow"
+doc_markdown = "warn"
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
+expect_used = "warn"
+fn_params_excessive_bools = "warn"
+future_not_send = "warn"
+implicit_hasher = "warn"
+missing_docs_in_private_items = "warn"
 missing_errors_doc = "warn"
 missing_panics_doc = "warn"
-missing_safety_doc = "warn"
-doc_markdown = "warn"
-exhaustive_enums = "allow"
-exhaustive_structs = "allow"
+module_name_repetitions = "warn"
+multiple_crate_versions = "warn"
 must_use_candidate = "warn"
-return_self_not_must_use = "warn"
-fn_params_excessive_bools = "warn"
-struct_excessive_bools = "allow"
-cognitive_complexity = "warn"
-too_many_lines = "allow"
-excessive_nesting = "allow"
-clone_on_ref_ptr = "warn"
-redundant_clone = "warn"
-large_types_passed_by_value = "warn"
-implicit_hasher = "warn"
-cast_precision_loss = "allow"
-cast_possible_truncation = "warn"
-cast_sign_loss = "warn"
-cast_lossless = "warn"
-future_not_send = "warn"
-await_holding_lock = "warn"
-await_holding_refcell_ref = "warn"
+nursery = { level = "warn", priority = -1 }
 option_if_let_else = "warn"
-wildcard_enum_match_arm = "allow"
-match_wildcard_for_single_variants = "warn"
-match_same_arms = "warn"
-module_name_repetitions = "allow"
-similar_names = "allow"
-shadow_reuse = "allow"
-shadow_same = "allow"
-shadow_unrelated = "allow"
-multiple_crate_versions = "allow"
-cargo_common_metadata = "allow"
-significant_drop_tightening = "allow"
-used_underscore_binding = "warn"
-mem_forget = "warn"
+panic = "warn"
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+print_stderr = "warn"
+print_stdout = "warn"
+shadow_reuse = "warn"
+shadow_same = "warn"
+shadow_unrelated = "warn"
+significant_drop_tightening = "warn"
+similar_names = "warn"
+struct_excessive_bools = "warn"
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+todo = "warn"
+too_many_lines = "warn"
+unimplemented = "warn"
+unwrap_in_result = "warn"
+unwrap_used = "warn"
+cargo_common_metadata = "warn"

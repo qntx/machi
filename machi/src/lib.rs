@@ -24,7 +24,6 @@
 //! | `toolkit` | Built-in filesystem, shell, and web search tools |
 //! | `mcp` | Model Context Protocol server integration |
 //! | `a2a` | Agent-to-Agent protocol support |
-//! | `wallet` | EVM wallet for blockchain interactions |
 //! | `memory-sqlite` | SQLite-backed session persistence |
 //! | `schema` | Structured output via JSON Schema generation |
 //! | `full` | All of the above (default) |
@@ -57,6 +56,7 @@
 #[cfg(feature = "a2a")]
 pub mod a2a;
 pub mod agent;
+pub mod context;
 pub mod audio;
 pub mod chat;
 pub mod embedding;
@@ -67,6 +67,7 @@ pub mod llms;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod memory;
+pub mod middleware;
 pub mod message;
 pub mod prelude;
 pub mod stream;
@@ -74,8 +75,6 @@ pub mod tool;
 #[cfg(feature = "toolkit")]
 pub mod tools;
 pub mod usage;
-#[cfg(feature = "wallet")]
-pub mod wallet;
 
 pub use error::{Error, Result};
 #[cfg(feature = "derive")]

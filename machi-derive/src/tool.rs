@@ -359,6 +359,14 @@ struct ToolArgs {
     /// List of required parameter names
     #[darling(default, multiple)]
     required: Vec<String>,
+    /// Concurrency mode: "read_only", "safe", or "exclusive"
+    concurrency: Option<String>,
+    /// Destructiveness: "none", "reversible", or "irreversible"
+    destructive: Option<String>,
+    /// Interrupt behavior: "drop", "wait_complete", or "abort"
+    interrupt: Option<String>,
+    /// Timeout in seconds
+    timeout_secs: Option<u64>,
 }
 
 /// Wrapper for parameter descriptions to implement `FromMeta`.
@@ -585,6 +593,47 @@ pub fn tool_impl(args: TokenStream, input: TokenStream) -> TokenStream {
         .map(|p| p.name.to_string())
         .collect();
 
+    // Generate metadata override if any metadata attributes are provided
+    let has_metadata_attrs = macro_args.concurrency.is_some()
+        || macro_args.destructive.is_some()
+        || macro_args.interrupt.is_some()
+        || macro_args.timeout_secs.is_some();
+
+    let metadata_impl = if has_metadata_attrs {
+        let concurrency = match macro_args.concurrency.as_deref() {
+            Some("read_only") => quote! { ::machi::tool::ConcurrencyMode::ReadOnly },
+            Some("exclusive") => quote! { ::machi::tool::ConcurrencyMode::Exclusive },
+            _ => quote! { ::machi::tool::ConcurrencyMode::Safe },
+        };
+        let destructiveness = match macro_args.destructive.as_deref() {
+            Some("reversible") => quote! { ::machi::tool::Destructiveness::Reversible },
+            Some("irreversible") => quote! { ::machi::tool::Destructiveness::Irreversible },
+            _ => quote! { ::machi::tool::Destructiveness::None },
+        };
+        let interrupt = match macro_args.interrupt.as_deref() {
+            Some("wait_complete") => quote! { ::machi::tool::InterruptBehavior::WaitComplete },
+            Some("abort") => quote! { ::machi::tool::InterruptBehavior::Abort },
+            _ => quote! { ::machi::tool::InterruptBehavior::Drop },
+        };
+        let timeout = if let Some(secs) = macro_args.timeout_secs {
+            quote! { Some(::std::time::Duration::from_secs(#secs)) }
+        } else {
+            quote! { None }
+        };
+        quote! {
+            fn metadata(&self) -> ::machi::tool::ToolMetadata {
+                ::machi::tool::ToolMetadata {
+                    concurrency: #concurrency,
+                    destructiveness: #destructiveness,
+                    interrupt_behavior: #interrupt,
+                    timeout: #timeout,
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     // Generate call implementation
     let call_impl = if is_async {
         quote! {
@@ -651,6 +700,8 @@ pub fn tool_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                     "required": [#(#required_params),*]
                 })
             }
+
+            #metadata_impl
 
             #call_impl
         }

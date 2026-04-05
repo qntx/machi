@@ -10,8 +10,6 @@ pub use crate::agent::AgentError;
 pub use crate::llms::LlmError;
 pub use crate::memory::MemoryError;
 pub use crate::tool::ToolError;
-#[cfg(feature = "wallet")]
-pub use crate::wallet::WalletError;
 
 /// Result type alias for machi operations.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -51,12 +49,7 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    /// HTTP middleware error (e.g., x402 payment).
+    /// HTTP middleware error.
     #[error("HTTP middleware error: {0}")]
     HttpMiddleware(#[from] reqwest_middleware::Error),
-
-    /// Wallet operation error.
-    #[cfg(feature = "wallet")]
-    #[error("Wallet error: {0}")]
-    Wallet(#[from] WalletError),
 }

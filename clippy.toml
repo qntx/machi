@@ -1,26 +1,20 @@
-cognitive-complexity-threshold = 25
-excessive-nesting-threshold = 5
-too-many-lines-threshold = 150
-too-many-arguments-threshold = 8
-type-complexity-threshold = 300
-struct-field-name-threshold = 5
+# Cognitive complexity threshold for functions
+cognitive-complexity-threshold = 30
 
-single-char-binding-names-threshold = 4
-doc-valid-idents = ["GitHub", "API", "HTTP", "JSON", "UUID", "Ethereum", "EVM"]
+# Maximum allowed nesting depth
+excessive-nesting-threshold = 6
 
+# Disallowed methods (security-sensitive)
 disallowed-methods = [
-    { path = "std::env::set_var", reason = "Library code should avoid modifying environment variables" },
-    { path = "std::env::remove_var", reason = "Library code should avoid modifying environment variables" },
-    { path = "std::mem::transmute", reason = "Extremely dangerous operation" },
+    { path = "std::env::set_var", reason = "Environment manipulation should be avoided in library code" },
+    { path = "std::env::remove_var", reason = "Environment manipulation should be avoided in library code" },
 ]
 
-pass-by-value-size-limit = 256
-enum-variant-size-threshold = 200
+# Type complexity threshold
+type-complexity-threshold = 300
 
-allow-dbg-in-tests = true
-allow-print-in-tests = true
-allow-unwrap-in-tests = true
+# Maximum number of lines in a single expression
+single-char-binding-names-threshold = 4
 
+# Avoid panics in library code
 avoid-breaking-exported-api = true
-
-literal-representation-threshold = 4

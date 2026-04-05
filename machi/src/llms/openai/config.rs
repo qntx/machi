@@ -22,10 +22,6 @@ impl OpenAIConfig {
     pub const DEFAULT_BASE_URL: &'static str = "https://api.openai.com/v1";
     /// Default model.
     pub const DEFAULT_MODEL: &'static str = "gpt-4o";
-    /// Default x402 payment-gated LLM gateway URL.
-    pub const X402_BASE_URL: &'static str = "https://llm.qntx.fun/v1";
-    /// Default model for x402 gateway.
-    pub const X402_DEFAULT_MODEL: &'static str = "openai/gpt-4o-mini";
 
     /// Creates a new configuration with the given API key.
     #[must_use]
@@ -108,24 +104,6 @@ impl OpenAIConfig {
             model: "gpt-4o".to_owned(),
             organization: None,
             timeout_secs: Some(120),
-        }
-    }
-
-    /// Creates config for x402 payment-gated LLM gateway.
-    ///
-    /// Defaults:
-    /// - `base_url`: `https://llm.qntx.fun/v1`
-    /// - `api_key`: `"x402"` (payment replaces authentication)
-    /// - `model`: `openai/gpt-4o-mini`
-    /// - `timeout`: 600 s (long timeout for payment + inference)
-    #[must_use]
-    pub fn x402() -> Self {
-        Self {
-            api_key: "x402".to_owned(),
-            base_url: Self::X402_BASE_URL.to_owned(),
-            model: Self::X402_DEFAULT_MODEL.to_owned(),
-            organization: None,
-            timeout_secs: Some(600),
         }
     }
 }

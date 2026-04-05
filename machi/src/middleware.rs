@@ -57,6 +57,7 @@ use crate::message::Message;
 use crate::tool::ToolError;
 
 /// A shared, thread-safe [`Middleware`] trait object.
+#[allow(clippy::module_name_repetitions)]
 pub type SharedMiddleware = std::sync::Arc<dyn Middleware>;
 
 /// Context passed to middleware methods.
@@ -64,6 +65,8 @@ pub type SharedMiddleware = std::sync::Arc<dyn Middleware>;
 /// Provides read access to the current run state. Middleware can inspect
 /// the agent name, step number, and accumulated usage.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct MiddlewareContext {
     /// The underlying run context.
     pub run_context: RunContext,
@@ -84,6 +87,7 @@ impl MiddlewareContext {
 
 /// Action to take after `on_tool_call` middleware processing.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ToolCallAction {
     /// Execute the tool call normally.
     Execute,

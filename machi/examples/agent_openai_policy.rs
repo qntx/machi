@@ -28,9 +28,11 @@ impl ConfirmationHandler for TerminalConfirmation {
         println!("Arguments: {}", request.arguments);
         println!("========================================");
         print!("Approve? [y]es / [n]o / [a]ll > ");
+        #[allow(clippy::expect_used)]
         stdout().flush().expect("flush stdout");
 
         let mut input = String::new();
+        #[allow(clippy::expect_used)]
         std::io::stdin().read_line(&mut input).expect("read stdin");
 
         match input.trim().to_lowercase().as_str() {

@@ -10,6 +10,7 @@
 /// pattern-match on specific cases (e.g., retrying transient errors).
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub enum LlmError {
     /// Authentication or authorization failure.
     #[error("[{provider}] {message}")]

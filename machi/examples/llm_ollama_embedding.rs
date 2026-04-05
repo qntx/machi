@@ -32,14 +32,17 @@ async fn main() -> Result<()> {
         "The stock market crashed today.".to_owned(),
     ];
 
-    let request = EmbeddingRequest::new("nomic-embed-text", texts);
-    let response = client.embed(&request).await?;
+    let batch_request = EmbeddingRequest::new("nomic-embed-text", texts);
+    let batch_response = client.embed(&batch_request).await?;
 
-    println!("\nBatch embeddings ({} texts):", response.embeddings.len());
+    println!(
+        "\nBatch embeddings ({} texts):",
+        batch_response.embeddings.len()
+    );
 
     // Calculate cosine similarity between embeddings
-    let sim_0_1 = response.embeddings[0].cosine_similarity(&response.embeddings[1]);
-    let sim_0_2 = response.embeddings[0].cosine_similarity(&response.embeddings[2]);
+    let sim_0_1 = batch_response.embeddings[0].cosine_similarity(&batch_response.embeddings[1]);
+    let sim_0_2 = batch_response.embeddings[0].cosine_similarity(&batch_response.embeddings[2]);
 
     println!("  Similarity (cat/feline sentences): {sim_0_1:.4}");
     println!("  Similarity (cat/stock sentences):  {sim_0_2:.4}");

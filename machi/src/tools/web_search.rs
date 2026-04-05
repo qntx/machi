@@ -98,6 +98,7 @@ pub type BoxedSearchProvider = Box<dyn SearchProvider>;
 ///
 /// The API key is sent via the `Authorization: Bearer` header.
 #[derive(Debug, Clone)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct TavilyProvider {
     api_key: String,
     client: reqwest::Client,
@@ -115,6 +116,7 @@ pub enum SearchDepth {
 }
 
 impl SearchDepth {
+    /// Get the search depth string for API requests.
     const fn as_str(self) -> &'static str {
         match self {
             Self::Basic => "basic",
@@ -148,13 +150,15 @@ impl TavilyProvider {
     }
 }
 
-// Tavily API response types (private).
+/// Tavily API response types (private).
 #[derive(Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct TavilyResponse {
     results: Vec<TavilyResult>,
 }
 
 #[derive(Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct TavilyResult {
     title: String,
     url: String,
@@ -226,6 +230,7 @@ impl SearchProvider for TavilyProvider {
 /// let provider = SearxngProvider::new("https://searx.example.com");
 /// ```
 #[derive(Debug, Clone)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct SearxngProvider {
     base_url: String,
     client: reqwest::Client,
@@ -253,13 +258,16 @@ impl SearxngProvider {
     }
 }
 
-// SearXNG JSON response types (private).
+/// `SearXNG` JSON response types (private).
 #[derive(Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct SearxngResponse {
     results: Vec<SearxngResult>,
 }
 
+/// Single `SearXNG` search result.
 #[derive(Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct SearxngResult {
     title: String,
     url: String,
@@ -326,6 +334,7 @@ impl SearchProvider for SearxngProvider {
 ///
 /// The API key is sent via the `X-Subscription-Token` header.
 #[derive(Debug, Clone)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct BraveProvider {
     api_key: String,
     client: reqwest::Client,
@@ -348,18 +357,21 @@ impl BraveProvider {
     }
 }
 
-// Brave Search API response types (private).
+/// Brave Search API response types (private).
 #[derive(Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct BraveResponse {
     web: Option<BraveWebResults>,
 }
 
 #[derive(Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct BraveWebResults {
     results: Vec<BraveResult>,
 }
 
 #[derive(Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct BraveResult {
     title: String,
     url: String,
@@ -419,12 +431,15 @@ impl SearchProvider for BraveProvider {
     }
 }
 
-// Pre-compiled regex patterns for parsing DuckDuckGo Lite HTML.
+/// Pre-compiled regex for parsing `DuckDuckGo` Lite link elements.
+#[allow(clippy::expect_used)]
 static DDG_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"class="result-link"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>"#)
         .expect("valid DDG link regex")
 });
 
+/// Pre-compiled regex for parsing `DuckDuckGo` Lite snippet elements.
+#[allow(clippy::expect_used)]
 static DDG_SNIPPET_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"class="result-snippet"[^>]*>([^<]+)"#).expect("valid DDG snippet regex")
 });
@@ -446,6 +461,7 @@ static DDG_SNIPPET_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// ```
 #[derive(Debug, Clone)]
 pub struct DuckDuckGoProvider {
+    /// HTTP client.
     client: reqwest::Client,
 }
 
@@ -547,7 +563,8 @@ impl SearchProvider for DuckDuckGoProvider {
     }
 }
 
-// Pre-compiled regex for parsing Bing RSS XML items.
+/// Pre-compiled regex for parsing Bing RSS XML items.
+#[allow(clippy::expect_used)]
 static RSS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"<item>.*?<title>([^<]*)</title>.*?<link>([^<]*)</link>.*?<description>([^<]*)</description>.*?</item>",
@@ -569,6 +586,7 @@ static RSS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// ```
 #[derive(Debug, Clone)]
 pub struct BingProvider {
+    /// HTTP client.
     client: reqwest::Client,
 }
 
@@ -696,7 +714,9 @@ pub struct WebSearchArgs {
 /// let tool = WebSearchTool::bing();
 /// ```
 pub struct WebSearchTool {
+    /// Search provider implementation.
     provider: BoxedSearchProvider,
+    /// Maximum number of results to return.
     max_results: usize,
 }
 

@@ -32,7 +32,9 @@ mod logging;
 
 use async_trait::async_trait;
 pub use context::RunContext;
-pub use logging::{LogLevel, LoggingHooks};
+pub use logging::LogLevel;
+#[allow(clippy::module_name_repetitions)]
+pub use logging::LoggingHooks;
 use serde_json::Value;
 
 use crate::chat::ChatResponse;
@@ -40,6 +42,7 @@ use crate::error::Error;
 use crate::message::Message;
 
 /// A shared, thread-safe [`Hooks`] trait object.
+#[allow(clippy::module_name_repetitions)]
 pub type SharedHooks = std::sync::Arc<dyn Hooks>;
 
 /// Lifecycle hooks for observing agent execution.
@@ -93,6 +96,8 @@ pub trait Hooks: Send + Sync {
 ///
 /// All methods are inherited from the trait defaults (empty bodies).
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct NoopHooks;
 
 #[async_trait]

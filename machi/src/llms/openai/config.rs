@@ -4,6 +4,7 @@ use crate::error::{LlmError, Result};
 
 /// Configuration for the `OpenAI` client.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct OpenAIConfig {
     /// API key for authentication.
     pub api_key: String,

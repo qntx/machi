@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 /// # `OpenAI` API Alignment
 /// Maps to `prompt_tokens_details` in the API response.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct PromptTokensDetails {
     /// Cached tokens that were reused (prompt caching).
     #[serde(default)]
@@ -34,6 +35,7 @@ pub struct PromptTokensDetails {
 /// # `OpenAI` API Alignment
 /// Maps to `completion_tokens_details` in the API response.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct CompletionTokensDetails {
     /// Reasoning tokens (for o1/o3 models).
     #[serde(default)]
@@ -67,6 +69,7 @@ pub struct CompletionTokensDetails {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Usage {
     /// Number of tokens in the input/prompt.
     #[serde(default, alias = "prompt_tokens")]

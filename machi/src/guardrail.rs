@@ -74,6 +74,8 @@ use crate::message::Message;
 /// about the check that was performed. When `tripwire_triggered` is `true`,
 /// the agent run is halted immediately.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct GuardrailOutput {
     /// Whether the tripwire was triggered.
     ///
@@ -166,6 +168,7 @@ pub trait InputGuardrailCheck: Send + Sync {
 /// - **Parallel** (`run_in_parallel: true`, default): Runs concurrently with
 ///   the first LLM call. If triggered, the LLM result is discarded.
 #[derive(Clone)]
+#[allow(clippy::module_name_repetitions)]
 pub struct InputGuardrail {
     /// Name of this guardrail (used in tracing and error messages).
     name: String,
@@ -247,6 +250,7 @@ impl std::fmt::Debug for InputGuardrail {
 
 /// The result of running an input guardrail.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct InputGuardrailResult {
     /// Name of the guardrail that produced this result.
     pub guardrail_name: String,
@@ -295,6 +299,7 @@ pub trait OutputGuardrailCheck: Send + Sync {
 /// All output guardrails run concurrently. If any guardrail's tripwire is
 /// triggered, the run returns an error and the output is not delivered.
 #[derive(Clone)]
+#[allow(clippy::module_name_repetitions)]
 pub struct OutputGuardrail {
     /// Name of this guardrail (used in tracing and error messages).
     name: String,
@@ -351,6 +356,7 @@ impl std::fmt::Debug for OutputGuardrail {
 
 /// The result of running an output guardrail.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct OutputGuardrailResult {
     /// Name of the guardrail that produced this result.
     pub guardrail_name: String,

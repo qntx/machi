@@ -20,8 +20,10 @@ use serde_json::{Value, json};
 /// A simple weather tool that returns mock data.
 struct GetWeather;
 
+/// Arguments for the weather tool.
 #[derive(Deserialize)]
 struct WeatherArgs {
+    /// City name to get weather for.
     city: String,
 }
 

@@ -179,6 +179,7 @@ impl OutputSchema {
 /// Can be either a static string set at construction time, or a dynamic
 /// closure that generates instructions based on runtime context.
 #[derive(Clone)]
+#[non_exhaustive]
 pub enum Instructions {
     /// Static instruction string.
     Static(String),
@@ -334,6 +335,7 @@ impl Agent {
     /// Create a new agent with the given name and sensible defaults.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
+        #[allow(clippy::shadow_reuse)]
         let name = name.into();
         Self {
             description: format!("Agent: {name}"),

@@ -90,6 +90,7 @@ pub fn create_tool(name: &str) -> Option<BoxedTool> {
 ///
 /// Unrecognized names are silently skipped.
 #[must_use]
+#[allow(clippy::module_name_repetitions)]
 pub fn create_tools(names: &[&str]) -> Vec<BoxedTool> {
     names.iter().filter_map(|name| create_tool(name)).collect()
 }
@@ -105,6 +106,7 @@ pub fn is_builtin_tool(name: &str) -> bool {
 /// Returns: [`ReadFileTool`], [`WriteFileTool`], [`EditFileTool`],
 /// [`ListDirTool`].
 #[must_use]
+#[allow(clippy::module_name_repetitions)]
 pub fn fs_tools() -> Vec<BoxedTool> {
     vec![
         Box::new(ReadFileTool::new()),
@@ -118,6 +120,7 @@ pub fn fs_tools() -> Vec<BoxedTool> {
 ///
 /// Returns every tool listed in [`BUILTIN_TOOL_NAMES`].
 #[must_use]
+#[allow(clippy::module_name_repetitions)]
 pub fn all_tools() -> Vec<BoxedTool> {
     vec![
         Box::new(ReadFileTool::new()),

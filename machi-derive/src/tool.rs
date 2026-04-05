@@ -32,12 +32,19 @@ use syn::{
 /// eliminating code duplication between schema generation and output type inference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum JsonSchemaType {
+    /// JSON string type.
     String,
+    /// JSON integer type.
     Integer,
+    /// JSON number (floating-point) type.
     Number,
+    /// JSON boolean type.
     Boolean,
+    /// JSON array type.
     Array,
+    /// JSON object type.
     Object,
+    /// JSON null type.
     Null,
 }
 
@@ -90,6 +97,7 @@ struct TypeInfo {
 
 impl TypeInfo {
     /// Analyze a Rust type and extract its JSON Schema information.
+    #[allow(clippy::shadow_unrelated)]
     fn from_type(ty: &Type) -> Self {
         match ty {
             Type::Path(type_path) => {
@@ -226,18 +234,25 @@ impl TypeInfo {
 /// State machine for parsing doc comment sections.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum DocSection {
+    /// Tool description section.
     #[default]
     Description,
+    /// Arguments section.
     Arguments,
+    /// Returns section.
     Returns,
+    /// Other/unrecognized section.
     Other,
 }
 
 /// Parsed documentation from doc comments.
 #[derive(Debug, Default)]
 struct DocInfo {
+    /// Overall tool description.
     description: String,
+    /// Per-parameter descriptions keyed by parameter name.
     param_descriptions: HashMap<String, String>,
+    /// Return value description.
     returns: Option<String>,
 }
 
@@ -359,11 +374,11 @@ struct ToolArgs {
     /// List of required parameter names
     #[darling(default, multiple)]
     required: Vec<String>,
-    /// Concurrency mode: "read_only", "safe", or "exclusive"
+    /// Concurrency mode: "`read_only`", "safe", or "exclusive"
     concurrency: Option<String>,
     /// Destructiveness: "none", "reversible", or "irreversible"
     destructive: Option<String>,
-    /// Interrupt behavior: "drop", "wait_complete", or "abort"
+    /// Interrupt behavior: "drop", "`wait_complete`", or "abort"
     interrupt: Option<String>,
     /// Timeout in seconds
     timeout_secs: Option<u64>,
@@ -468,13 +483,16 @@ fn extract_result_types(return_type: &ReturnType) -> (TokenStream2, TokenStream2
 
             // Handle ToolResult<T> - single generic parameter, error is always ToolError
             if ident == "ToolResult" && args.args.len() == 1 {
+                #[allow(clippy::expect_used)]
                 let output = args.args.first().expect("output type");
                 return (quote!(#output), quote!(::machi::ToolError));
             }
 
             // Handle Result<T, E> - two generic parameters
             if ident == "Result" && args.args.len() == 2 {
+                #[allow(clippy::expect_used)]
                 let output = args.args.first().expect("output type");
+                #[allow(clippy::expect_used)]
                 let error = args.args.last().expect("error type");
                 return (quote!(#output), quote!(#error));
             }
@@ -486,14 +504,20 @@ fn extract_result_types(return_type: &ReturnType) -> (TokenStream2, TokenStream2
 
 /// Parameter information extracted from function signature.
 struct ParamInfo {
+    /// Parameter name identifier.
     name: Ident,
+    /// Parameter type.
     ty: Type,
+    /// Documentation description for this parameter.
     description: String,
+    /// Whether this parameter is required (non-Option).
     is_required: bool,
+    /// Resolved JSON Schema type information.
     type_info: TypeInfo,
 }
 
 impl ParamInfo {
+    /// Extract parameter info from a function argument.
     fn from_fn_arg(arg: &FnArg, macro_args: &ToolArgs, doc_info: &DocInfo) -> Option<Self> {
         let FnArg::Typed(pat_type) = arg else {
             return None;
@@ -527,9 +551,11 @@ impl ParamInfo {
 }
 
 /// Main implementation of the tool macro.
+#[allow(clippy::too_many_lines)]
 pub fn tool_impl(args: TokenStream, input: TokenStream) -> TokenStream {
     // Parse macro arguments using darling
     let macro_args = match ToolArgs::from_args(args) {
+        #[allow(clippy::shadow_reuse)]
         Ok(args) => args,
         Err(err) => return TokenStream::from(err.write_errors()),
     };

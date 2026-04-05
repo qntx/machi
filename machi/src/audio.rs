@@ -32,6 +32,8 @@ use crate::error::Result;
 /// - **STT (`OpenAI`)**: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub enum AudioFormat {
     /// WAV format
     #[default]
@@ -116,6 +118,7 @@ impl AudioFormat {
 /// `OpenAI` built-in voices: `alloy`, `ash`, `ballad`, `coral`, `echo`,
 /// `fable`, `onyx`, `nova`, `sage`, `shimmer`, `verse`, `marin`, `cedar`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Voice {
     /// Voice identifier (e.g., "alloy", "echo", "nova").
     pub id: String,
@@ -155,6 +158,7 @@ impl<S: Into<String>> From<S> for Voice {
 /// - `tts-1-hd`: Higher quality, higher latency
 /// - `gpt-4o-mini-tts`: Supports instructions for voice control
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct SpeechRequest {
     /// Model to use for TTS (e.g., "tts-1", "tts-1-hd", "gpt-4o-mini-tts").
     pub model: String,
@@ -218,6 +222,7 @@ impl SpeechRequest {
 
 /// Response from a speech synthesis request.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SpeechResponse {
     /// The generated audio data.
     pub audio: Vec<u8>,
@@ -251,6 +256,7 @@ impl SpeechResponse {
 /// Output format for transcription responses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum TranscriptionResponseFormat {
     /// JSON format with text only.
     #[default]
@@ -282,6 +288,7 @@ impl TranscriptionResponseFormat {
 /// Timestamp granularity options for transcription.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum TimestampGranularity {
     /// Word-level timestamps.
     Word,
@@ -307,6 +314,7 @@ impl TimestampGranularity {
 /// - `gpt-4o-transcribe`: GPT-4o based transcription
 /// - `gpt-4o-mini-transcribe`: Smaller, faster GPT-4o transcription
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct TranscriptionRequest {
     /// Model to use for transcription (e.g., "whisper-1", "gpt-4o-transcribe").
     pub model: String,
@@ -411,6 +419,7 @@ impl TranscriptionRequest {
 
 /// A word with timestamp information from transcription.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct TranscriptionWord {
     /// The transcribed word.
     pub word: String,
@@ -422,6 +431,7 @@ pub struct TranscriptionWord {
 
 /// A segment of transcribed text with metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct TranscriptionSegment {
     /// Segment ID.
     pub id: usize,
@@ -435,6 +445,7 @@ pub struct TranscriptionSegment {
 
 /// Response from a transcription request.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct TranscriptionResponse {
     /// The transcribed text.
     pub text: String,

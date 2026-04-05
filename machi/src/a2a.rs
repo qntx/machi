@@ -61,8 +61,11 @@ use crate::tool::{BoxedTool, DynTool, ToolDefinition};
 ///     .name("my-agent");
 /// ```
 #[derive(Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub struct A2aAgentBuilder {
+    /// Transport configuration for the A2A client.
     config: TransportConfig,
+    /// Optional human-readable name override.
     name: Option<String>,
 }
 
@@ -177,6 +180,7 @@ impl A2aAgentBuilder {
 ///     .bearer_auth("token")
 ///     .name("weather");
 /// ```
+#[allow(clippy::module_name_repetitions)]
 pub struct A2aAgent {
     /// The underlying ra2a client.
     client: Arc<Client>,
@@ -240,8 +244,7 @@ impl A2aAgent {
                 self.name,
             ))
         })?;
-        let mut cached = self.card.write().await;
-        *cached = card.clone();
+        *self.card.write().await = card.clone();
         Ok(card)
     }
 
@@ -370,6 +373,7 @@ impl A2aAgent {
 ///
 /// Created by [`A2aAgent::into_tool`].
 struct A2aTool {
+    /// The wrapped A2A agent.
     agent: Arc<A2aAgent>,
 }
 

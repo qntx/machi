@@ -19,6 +19,7 @@ use crate::usage::Usage;
 
 /// `OpenAI` chat completion response.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIChatResponse {
     pub id: String,
     pub model: String,
@@ -32,6 +33,7 @@ struct OpenAIChatResponse {
 
 /// `OpenAI` response choice.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIChoice {
     pub message: OpenAIResponseMessage,
     pub finish_reason: Option<String>,
@@ -39,6 +41,7 @@ struct OpenAIChoice {
 
 /// `OpenAI` response message.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIResponseMessage {
     pub content: Option<String>,
     /// Refusal message if the model declined to respond.

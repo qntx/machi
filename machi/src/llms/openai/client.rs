@@ -18,12 +18,14 @@ use crate::llms::LlmError;
 
 /// `OpenAI` error response.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIErrorResponse {
     pub error: OpenAIError,
 }
 
 /// `OpenAI` error details.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIError {
     pub message: String,
     #[serde(rename = "type")]
@@ -37,7 +39,9 @@ struct OpenAIError {
 /// client when no middleware is registered.
 #[derive(Debug, Clone)]
 pub struct OpenAI {
+    /// Shared configuration.
     pub(crate) config: Arc<OpenAIConfig>,
+    /// HTTP client with optional middleware.
     pub(crate) client: ClientWithMiddleware,
 }
 

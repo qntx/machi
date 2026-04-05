@@ -7,6 +7,7 @@
 /// Error type for agent runtime operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub enum AgentError {
     /// General agent runtime error with a descriptive message.
     #[error("{0}")]

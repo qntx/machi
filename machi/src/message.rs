@@ -153,6 +153,7 @@ impl fmt::Display for ImageMime {
 /// Detail level for image processing in vision models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ImageDetail {
     /// Low resolution processing (faster, cheaper).
     Low,
@@ -165,6 +166,7 @@ pub enum ImageDetail {
 
 /// Input audio data for audio messages.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct InputAudio {
     /// Base64-encoded audio data.
     pub data: String,
@@ -193,6 +195,7 @@ impl InputAudio {
 /// A single content part within a message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ContentPart {
     /// Text content.
     Text {
@@ -213,6 +216,7 @@ pub enum ContentPart {
 
 /// Image URL with optional detail level.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ImageUrl {
     /// The URL (http/https or data URL).
     pub url: String,
@@ -319,6 +323,7 @@ impl ContentPart {
 /// Message content that can be either simple text or multipart.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum Content {
     /// Simple text content (most common case).
     Text(String),
@@ -402,6 +407,7 @@ impl From<Vec<ContentPart>> for Content {
 
 /// A function call within a tool call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct FunctionCall {
     /// Name of the function to call.
     pub name: String,
@@ -438,6 +444,7 @@ impl FunctionCall {
 
 /// A tool call made by the assistant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ToolCall {
     /// Unique identifier for this tool call.
     pub id: String,
@@ -448,6 +455,7 @@ pub struct ToolCall {
     pub function: FunctionCall,
 }
 
+/// Returns the default tool call type ("function").
 fn default_tool_type() -> String {
     "function".to_owned()
 }
@@ -500,6 +508,7 @@ impl fmt::Display for ToolCall {
 /// A thinking block from Anthropic Claude models.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ThinkingBlock {
     /// Standard thinking block with visible content.
     Thinking {
@@ -539,6 +548,7 @@ impl ThinkingBlock {
 /// Annotation on an assistant message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Annotation {
     /// URL citation annotation.
     UrlCitation {
@@ -564,6 +574,7 @@ pub enum Annotation {
 
 /// A chat message in a conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Message {
     /// Role of the message sender.
     pub role: Role,
@@ -745,11 +756,17 @@ impl fmt::Display for Message {
 
 /// Builder for constructing messages with a fluent API.
 #[derive(Debug, Clone)]
+#[allow(clippy::module_name_repetitions)]
 pub struct MessageBuilder {
+    /// The role for the message being built.
     role: Role,
+    /// Content parts accumulated so far.
     parts: Vec<ContentPart>,
+    /// Tool calls accumulated so far.
     tool_calls: Vec<ToolCall>,
+    /// Optional tool call ID for tool response messages.
     tool_call_id: Option<String>,
+    /// Optional sender name.
     name: Option<String>,
 }
 

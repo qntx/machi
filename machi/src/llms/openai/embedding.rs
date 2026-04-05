@@ -11,6 +11,7 @@ use crate::error::{LlmError, Result};
 
 /// `OpenAI` embedding data (kept because the field is `embedding`, not `vector`).
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIEmbeddingData {
     pub embedding: Vec<f32>,
     pub index: usize,
@@ -18,6 +19,7 @@ struct OpenAIEmbeddingData {
 
 /// `OpenAI` embedding response wrapper.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIEmbeddingResponse {
     pub data: Vec<OpenAIEmbeddingData>,
     pub model: String,

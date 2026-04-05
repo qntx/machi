@@ -11,4 +11,5 @@ mod embedding;
 mod stream;
 
 pub use client::Ollama;
+#[allow(clippy::module_name_repetitions)]
 pub use config::OllamaConfig;

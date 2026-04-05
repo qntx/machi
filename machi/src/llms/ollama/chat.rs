@@ -18,6 +18,7 @@ use crate::usage::Usage;
 
 /// Ollama chat completion response.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OllamaChatResponse {
     pub model: String,
     pub message: OllamaResponseMessage,
@@ -31,6 +32,7 @@ struct OllamaChatResponse {
 
 /// Ollama response message.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OllamaResponseMessage {
     #[serde(default)]
     pub content: String,

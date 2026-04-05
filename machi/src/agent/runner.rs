@@ -52,23 +52,41 @@ enum StepOutcome {
 /// Per-run mutable state, created once by [`init`](Self::init) and driven
 /// step-by-step by [`Runner::run`] or [`Runner::run_streamed`].
 struct RunState<'a> {
+    /// The agent being executed.
     agent: &'a Agent,
+    /// LLM provider for chat completions.
     provider: &'a dyn ChatProvider,
+    /// Shared run context (agent name, run ID).
     context: RunContext,
+    /// Accumulated conversation messages.
     messages: Vec<Message>,
+    /// History of completed reasoning steps.
     step_history: Vec<StepInfo>,
+    /// Cumulative token usage across all LLM calls.
     cumulative_usage: Usage,
+    /// Tool names that have been auto-approved for this run.
     auto_approved: HashSet<String>,
+    /// The original user message that started the run.
     user_message: Message,
+    /// The resolved system prompt for this run.
     system_prompt: String,
+    /// All tool definitions available to the agent.
     all_definitions: Vec<ToolDefinition>,
+    /// Output guardrails from both agent and run config.
     all_output_guardrails: Vec<&'a OutputGuardrail>,
+    /// Results from input guardrail checks.
     input_guardrail_results: Vec<InputGuardrailResult>,
+    /// Input guardrails to run in parallel with the first LLM call.
     parallel_guardrails: Vec<&'a InputGuardrail>,
+    /// Maximum number of reasoning steps.
     max_steps: usize,
+    /// Maximum concurrent tool executions.
     max_tool_concurrency: Option<usize>,
+    /// Whether structured output mode is enabled.
     structured_output: bool,
+    /// Context compaction strategy.
     context_strategy: Option<SharedContextStrategy>,
+    /// Middleware pipeline.
     middleware: Vec<SharedMiddleware>,
 }
 
@@ -205,6 +223,7 @@ impl<'a> RunState<'a> {
     ///
     /// Classifies the response, applies tool policies, runs output
     /// guardrails, executes tool calls, and updates step history.
+    #[allow(clippy::too_many_lines)]
     async fn process_step(
         &mut self,
         step: usize,
@@ -214,6 +233,7 @@ impl<'a> RunState<'a> {
         config: &RunConfig,
     ) -> Result<StepOutcome> {
         let next_step = Runner::classify_response(&response, self.structured_output);
+        #[allow(clippy::shadow_reuse)]
         let (next_step, forbidden) =
             Runner::apply_policies(next_step, self.agent, &self.auto_approved);
 
@@ -353,6 +373,7 @@ impl<'a> RunState<'a> {
 /// Stateless execution engine that drives an [`Agent`] through its reasoning
 /// loop. All per-run state lives in [`RunState`], making concurrent calls safe.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct Runner;
 
 impl Runner {
@@ -365,6 +386,7 @@ impl Runner {
         input: impl Into<UserInput>,
         config: RunConfig,
     ) -> Pin<Box<dyn Future<Output = Result<RunResult>> + Send + 'a>> {
+        #[allow(clippy::shadow_reuse)]
         let input = input.into();
         let span = info_span!(
             "agent",
@@ -462,6 +484,7 @@ impl Runner {
         input: impl Into<UserInput>,
         config: RunConfig,
     ) -> Pin<Box<dyn Stream<Item = Result<RunEvent>> + Send + 'a>> {
+        #[allow(clippy::shadow_reuse)]
         let input = input.into();
         Box::pin(Self::run_streamed_inner(agent, input, config))
     }
@@ -469,6 +492,7 @@ impl Runner {
     /// Core streaming loop.
     // `tail_expr_drop_order`: false positive from the `try_stream!` macro.
     #[allow(tail_expr_drop_order)]
+    #[allow(clippy::too_many_lines)]
     fn run_streamed_inner(
         agent: &Agent,
         input: UserInput,
@@ -575,6 +599,7 @@ impl Runner {
                         return;
                     }
                     StepOutcome::Continue => {
+                        #[allow(clippy::expect_used)]
                         let last = state.step_history.last().expect("just pushed");
                         for record in &last.tool_calls {
                             yield RunEvent::ToolCallCompleted {
@@ -703,6 +728,7 @@ impl Runner {
     ///
     /// Results are appended to `messages` in the original call order regardless
     /// of execution order.
+    #[allow(clippy::too_many_arguments)]
     async fn execute_tool_calls(
         calls: &[ToolCallRequest],
         agent: &Agent,

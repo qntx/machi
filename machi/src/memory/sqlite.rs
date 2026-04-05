@@ -30,7 +30,9 @@ use crate::message::Message;
 /// to the tokio blocking thread pool.
 #[derive(Debug, Clone)]
 pub struct SqliteSession {
+    /// Session identifier.
     id: String,
+    /// Shared database connection.
     conn: Arc<Mutex<Connection>>,
 }
 
@@ -102,6 +104,7 @@ impl SqliteSession {
     /// The closure receives a reference to the locked [`Connection`] and
     /// operates in [`MemoryError`] space; conversion to [`Result`] happens
     /// at the boundary via the double-`?` pattern.
+    #[allow(clippy::shadow_unrelated)]
     async fn blocking<F, T>(&self, f: F) -> Result<T>
     where
         F: FnOnce(&Connection) -> std::result::Result<T, MemoryError> + Send + 'static,
@@ -134,10 +137,12 @@ impl Session for SqliteSession {
                 )?;
 
                 #[allow(clippy::cast_possible_wrap)]
-                let limit = n as i64;
-                stmt.query_map(params![session_id, limit], |row| row.get::<_, String>(0))?
-                    .map(|r| Ok(serde_json::from_str::<Message>(&r?)?))
-                    .collect::<std::result::Result<Vec<_>, MemoryError>>()?
+                let row_limit = n as i64;
+                stmt.query_map(params![session_id, row_limit], |row| {
+                    row.get::<_, String>(0)
+                })?
+                .map(|r| Ok(serde_json::from_str::<Message>(&r?)?))
+                .collect::<std::result::Result<Vec<_>, MemoryError>>()?
             } else {
                 let mut stmt = conn.prepare(
                     "SELECT message_data FROM messages \

@@ -16,7 +16,9 @@ use machi::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+/// Country information.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct Country {
     name: String,
     capital: String,
@@ -38,6 +40,7 @@ async fn main() -> Result<()> {
         .run("Tell me about Japan.", RunConfig::default())
         .await?;
 
+    #[allow(clippy::expect_used)]
     let country: Country = result.parse().expect("valid Country JSON");
     println!("Name:       {}", country.name);
     println!("Capital:    {}", country.capital);

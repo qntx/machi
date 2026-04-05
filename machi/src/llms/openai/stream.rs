@@ -8,6 +8,7 @@ use crate::usage::Usage;
 
 /// `OpenAI` streaming chunk.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIStreamChunk {
     pub choices: Vec<OpenAIStreamChoice>,
     #[serde(default)]
@@ -16,6 +17,7 @@ struct OpenAIStreamChunk {
 
 /// `OpenAI` stream choice.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIStreamChoice {
     pub delta: OpenAIStreamDelta,
     pub finish_reason: Option<String>,
@@ -23,6 +25,7 @@ struct OpenAIStreamChoice {
 
 /// `OpenAI` stream delta.
 #[derive(Debug, Clone, Default, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIStreamDelta {
     pub content: Option<String>,
     pub tool_calls: Option<Vec<OpenAIStreamToolCall>>,
@@ -30,6 +33,7 @@ struct OpenAIStreamDelta {
 
 /// `OpenAI` stream tool call delta.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIStreamToolCall {
     pub index: usize,
     #[serde(default)]
@@ -39,12 +43,14 @@ struct OpenAIStreamToolCall {
 
 /// `OpenAI` stream function call delta.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAIStreamFunctionCall {
     pub name: Option<String>,
     pub arguments: Option<String>,
 }
 
 /// Parse SSE events from a text buffer.
+#[allow(clippy::shadow_reuse)]
 pub fn parse_sse_events(text: &str) -> Vec<Result<StreamChunk>> {
     let mut results = Vec::new();
 

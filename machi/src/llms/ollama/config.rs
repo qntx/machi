@@ -2,6 +2,7 @@
 
 /// Configuration for the Ollama client.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct OllamaConfig {
     /// Base URL for the Ollama API.
     pub base_url: String,

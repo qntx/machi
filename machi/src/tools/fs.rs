@@ -160,6 +160,7 @@ fn extract_lines(content: &str, start: Option<usize>, end: Option<usize>) -> Str
 /// Supports creating new files, overwriting existing files, and appending.
 /// Parent directories are created automatically when `create_dirs` is true.
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct WriteFileTool;
 
 impl WriteFileTool {
@@ -186,6 +187,7 @@ pub struct WriteFileArgs {
     pub create_dirs: bool,
 }
 
+/// Default value for `create_dirs` (returns `true`).
 const fn ret_true() -> bool {
     true
 }
@@ -278,6 +280,7 @@ impl Tool for WriteFileTool {
 /// Locates `old_text` inside the target file and replaces it with `new_text`.
 /// Supports replacing only the first occurrence or all occurrences.
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct EditFileTool;
 
 impl EditFileTool {
@@ -418,6 +421,7 @@ pub struct ListDirArgs {
 
 /// Internal representation of a single directory entry.
 #[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct DirEntry {
     name: String,
     is_dir: bool,

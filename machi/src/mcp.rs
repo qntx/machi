@@ -73,6 +73,7 @@ use crate::tool::{BoxedTool, DynTool, ToolDefinition};
 ///     .name("github");
 /// ```
 #[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct StdioBuilder {
     command: String,
     args: Vec<String>,
@@ -180,6 +181,7 @@ impl StdioBuilder {
 ///     .name("remote-tools");
 /// ```
 #[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct HttpBuilder {
     url: String,
     bearer_token: Option<String>,
@@ -271,6 +273,7 @@ impl HttpBuilder {
 ///     .bearer_auth("sk-xxx")
 ///     .name("acme");
 /// ```
+#[allow(clippy::module_name_repetitions)]
 pub struct McpServer {
     /// The running rmcp client service.
     service: Arc<RwLock<RunningService<RoleClient, ()>>>,
@@ -389,13 +392,15 @@ impl McpServer {
     ///
     /// Returns an error if the server communication fails.
     pub async fn refresh_tools(&self) -> crate::Result<Vec<McpToolDef>> {
-        let svc = self.service.read().await;
-        let tools = svc.peer().list_all_tools().await.map_err(|e| {
-            crate::error::AgentError::runtime(format!(
-                "Failed to list tools from MCP server '{}': {e}",
-                self.name
-            ))
-        })?;
+        let tools = {
+            let svc = self.service.read().await;
+            svc.peer().list_all_tools().await.map_err(|e| {
+                crate::error::AgentError::runtime(format!(
+                    "Failed to list tools from MCP server '{}': {e}",
+                    self.name
+                ))
+            })?
+        };
 
         debug!(
             server = %self.name,
@@ -403,8 +408,10 @@ impl McpServer {
             "Discovered MCP tools",
         );
 
-        let mut cache = self.cached_tools.write().await;
-        *cache = Some(tools.clone());
+        {
+            let mut cache = self.cached_tools.write().await;
+            *cache = Some(tools.clone());
+        }
 
         Ok(tools)
     }
@@ -435,14 +442,16 @@ impl McpServer {
             }
         };
 
-        let svc = self.service.read().await;
         let mut params = CallToolRequestParams::new(tool_name.clone());
         if let Some(args) = args_obj {
             params = params.with_arguments(args);
         }
-        let result: CallToolResult = svc.peer().call_tool(params).await.map_err(|e| {
-            ToolError::Execution(format!("MCP tool '{tool_name}' call failed: {e}"))
-        })?;
+        let result: CallToolResult = {
+            let svc = self.service.read().await;
+            svc.peer().call_tool(params).await.map_err(|e| {
+                ToolError::Execution(format!("MCP tool '{tool_name}' call failed: {e}"))
+            })?
+        };
 
         // Check if the server reported an error.
         if result.is_error == Some(true) {
@@ -484,8 +493,7 @@ impl McpServer {
     ///
     /// Returns an error if the shutdown handshake fails.
     pub async fn close(&self) -> crate::Result<()> {
-        let mut svc = self.service.write().await;
-        svc.close().await.map_err(|e| {
+        self.service.write().await.close().await.map_err(|e| {
             crate::error::AgentError::runtime(format!(
                 "Failed to close MCP server '{}': {e}",
                 self.name
@@ -510,6 +518,7 @@ impl McpServer {
 ///
 /// Created by [`McpServer::tools`]. You typically do not construct this
 /// directly.
+#[allow(clippy::missing_docs_in_private_items)]
 struct McpTool {
     server: Arc<McpServer>,
     tool_def: McpToolDef,

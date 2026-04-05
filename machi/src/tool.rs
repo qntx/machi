@@ -77,6 +77,8 @@ pub enum InterruptBehavior {
 /// All fields default to the most permissive/safe values, so tools that don't
 /// override [`DynTool::metadata`] behave exactly as before.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct ToolMetadata {
     /// How this tool interacts with concurrent execution.
     pub concurrency: ConcurrencyMode,
@@ -150,6 +152,7 @@ impl ToolMetadata {
 /// Error type for tool execution failures.
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub enum ToolError {
     /// Error during tool execution.
     #[error("Execution error: {0}")]
@@ -195,6 +198,7 @@ impl From<serde_json::Error> for ToolError {
 }
 
 /// A type alias for `Result<T, ToolError>`.
+#[allow(clippy::module_name_repetitions)]
 pub type ToolResult<T> = Result<T, ToolError>;
 
 /// Definition of a tool for LLM function calling.
@@ -218,6 +222,7 @@ pub type ToolResult<T> = Result<T, ToolError>;
 /// at each object level for proper Structured Outputs support.
 #[derive(Debug, Clone, Deserialize)]
 #[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct ToolDefinition {
     /// Name of the tool (e.g., "`get_weather`").
     /// Should be descriptive and use `snake_case`.
@@ -400,10 +405,12 @@ pub trait Tool: Send + Sync {
 }
 
 /// A boxed dynamic tool that can be used in collections.
+#[allow(clippy::module_name_repetitions)]
 pub type BoxedTool = Box<dyn DynTool>;
 
 /// Object-safe version of the Tool trait for dynamic dispatch.
 #[async_trait]
+#[allow(clippy::module_name_repetitions)]
 pub trait DynTool: Send + Sync {
     /// Get the name of the tool.
     fn name(&self) -> &str;
@@ -452,6 +459,7 @@ where
 /// Execution policy for a tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub enum ToolExecutionPolicy {
     /// Agent can execute the tool autonomously without confirmation.
     #[default]
@@ -474,6 +482,8 @@ impl fmt::Display for ToolExecutionPolicy {
 
 /// Request for human confirmation before tool execution.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct ToolConfirmationRequest {
     /// The tool call ID.
     pub id: String,
@@ -489,6 +499,7 @@ impl ToolConfirmationRequest {
     /// Create a new confirmation request.
     #[must_use]
     pub fn new(id: impl Into<String>, name: impl Into<String>, arguments: Value) -> Self {
+        #[allow(clippy::shadow_reuse)]
         let name = name.into();
         let description = format!(
             "Tool '{}' wants to execute with arguments: {}",
@@ -506,6 +517,8 @@ impl ToolConfirmationRequest {
 
 /// Response to a tool confirmation request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub enum ToolConfirmationResponse {
     /// User approved the tool execution.
     Approved,
@@ -535,6 +548,7 @@ pub type SharedConfirmationHandler = std::sync::Arc<dyn ConfirmationHandler>;
 
 /// Default confirmation handler that auto-approves all requests.
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct AutoApproveHandler;
 
 #[async_trait]
@@ -546,6 +560,7 @@ impl ConfirmationHandler for AutoApproveHandler {
 
 /// Confirmation handler that always denies execution.
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct AlwaysDenyHandler;
 
 #[async_trait]

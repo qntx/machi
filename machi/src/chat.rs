@@ -36,6 +36,7 @@ use crate::usage::Usage;
 /// Reasoning effort level for o-series models.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ReasoningEffort {
     /// No reasoning (gpt-5.1+ only).
     None,
@@ -74,6 +75,8 @@ impl ReasoningEffort {
 /// This struct aligns with `OpenAI`'s Chat Completions API parameters.
 /// Some fields are provider-specific and may be ignored by other backends.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct ChatRequest {
     /// Model identifier (e.g., "gpt-4o", "claude-3-5-sonnet").
     #[serde(default)]
@@ -374,6 +377,7 @@ impl ChatRequest {
 
 /// Controls how the model uses tools.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub enum ToolChoice {
     /// Model decides whether to use tools.
     #[default]
@@ -416,6 +420,7 @@ impl From<&str> for ToolChoice {
 /// Response format specification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ResponseFormat {
     /// Plain text response.
     Text,
@@ -496,6 +501,7 @@ pub fn generate_json_schema<T: schemars::JsonSchema>() -> (String, Value) {
 
 /// JSON schema specification for structured outputs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct JsonSchemaSpec {
     /// Schema name.
     pub name: String,
@@ -508,6 +514,8 @@ pub struct JsonSchemaSpec {
 
 /// A chat completion response from an LLM.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct ChatResponse {
     /// The generated message.
     pub message: Message,
@@ -663,6 +671,7 @@ impl Default for ChatResponse {
 /// This is the primary trait that all LLM backends must implement to support
 /// chat-based interactions with language models.
 #[async_trait]
+#[allow(clippy::module_name_repetitions)]
 pub trait ChatProvider: Send + Sync {
     /// Send a chat completion request and receive a complete response.
     ///

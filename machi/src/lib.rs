@@ -1,3 +1,5 @@
+#![allow(clippy::multiple_crate_versions)]
+
 //! A lightweight, ergonomic framework for building AI agents in Rust.
 //!
 //! Machi provides the building blocks for constructing AI agents that reason,

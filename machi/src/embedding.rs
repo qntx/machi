@@ -29,6 +29,7 @@ use crate::error::Result;
 /// Encoding format for embedding output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum EncodingFormat {
     /// Float format (default) - returns vectors as arrays of floats.
     #[default]
@@ -60,6 +61,8 @@ impl EncodingFormat {
 /// - Max total tokens: 300,000 across all inputs in a single request
 /// - Max array size: 2048 inputs
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct EmbeddingRequest {
     /// Model to use for embedding.
     pub model: String,
@@ -122,6 +125,7 @@ impl EmbeddingRequest {
 
 /// A single embedding vector.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Embedding {
     /// The embedding vector.
     pub vector: Vec<f32>,
@@ -184,6 +188,8 @@ impl Embedding {
 
 /// Token usage statistics for embedding requests.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct EmbeddingUsage {
     /// Number of tokens in the input prompt.
     pub prompt_tokens: u32,
@@ -193,6 +199,8 @@ pub struct EmbeddingUsage {
 
 /// Response from an embedding request.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct EmbeddingResponse {
     /// The generated embeddings.
     pub embeddings: Vec<Embedding>,
@@ -253,6 +261,7 @@ impl EmbeddingResponse {
 
 /// Trait for providers that support text embeddings.
 #[async_trait]
+#[allow(clippy::module_name_repetitions)]
 pub trait EmbeddingProvider: Send + Sync {
     /// Generate embeddings for the given texts.
     async fn embed(&self, request: &EmbeddingRequest) -> Result<EmbeddingResponse>;

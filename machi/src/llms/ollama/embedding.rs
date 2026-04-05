@@ -14,6 +14,7 @@ const DEFAULT_EMBEDDING_MODEL: &str = "nomic-embed-text";
 
 /// Ollama embedding response.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OllamaEmbeddingResponse {
     embeddings: Vec<Vec<f32>>,
     #[serde(default)]

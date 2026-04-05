@@ -9,6 +9,7 @@ use crate::usage::Usage;
 
 /// Ollama streaming response chunk.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OllamaStreamChunk {
     pub message: OllamaStreamMessage,
     pub done: bool,
@@ -22,6 +23,7 @@ struct OllamaStreamChunk {
 
 /// Ollama stream message.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OllamaStreamMessage {
     #[serde(default)]
     pub content: String,
@@ -32,6 +34,7 @@ struct OllamaStreamMessage {
 }
 
 /// Parse a streaming response line from Ollama.
+#[allow(clippy::shadow_reuse)]
 pub fn parse_stream_line(line: &str) -> Option<Result<StreamChunk>> {
     let line = line.trim();
     if line.is_empty() {

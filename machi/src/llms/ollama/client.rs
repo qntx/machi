@@ -16,6 +16,7 @@ use crate::tool::ToolDefinition;
 
 /// Ollama chat completion request.
 #[derive(Debug, Clone, Serialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(super) struct OllamaChatRequest {
     pub model: String,
     pub messages: Vec<OllamaMessage>,
@@ -37,6 +38,7 @@ pub(super) struct OllamaChatRequest {
 
 /// Ollama generation options.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct OllamaOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
@@ -58,6 +60,7 @@ pub struct OllamaOptions {
 
 /// Ollama message format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(super) struct OllamaMessage {
     pub role: String,
     pub content: String,
@@ -69,12 +72,14 @@ pub(super) struct OllamaMessage {
 
 /// Ollama tool call (response-side only; different from core `ToolCall`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(super) struct OllamaToolCall {
     pub function: OllamaFunctionCall,
 }
 
 /// Ollama function call details (arguments as `Value`, not `String`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub(super) struct OllamaFunctionCall {
     pub name: String,
     pub arguments: Value,
@@ -82,6 +87,7 @@ pub(super) struct OllamaFunctionCall {
 
 /// Ollama error response.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OllamaErrorResponse {
     pub error: String,
 }
@@ -89,7 +95,9 @@ struct OllamaErrorResponse {
 /// Ollama API client.
 #[derive(Debug, Clone)]
 pub struct Ollama {
+    /// Shared configuration.
     pub(crate) config: Arc<OllamaConfig>,
+    /// HTTP client.
     pub(crate) client: Client,
 }
 
@@ -224,6 +232,7 @@ impl Ollama {
                     }
                 }
 
+                #[allow(clippy::shadow_reuse)]
                 let images = if images.is_empty() {
                     None
                 } else {

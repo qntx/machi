@@ -22,6 +22,7 @@ use crate::message::Message;
 ///
 /// Maps directly to `tracing` levels.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LogLevel {
     /// Trace-level logging (most verbose).
     Trace,
@@ -60,6 +61,7 @@ macro_rules! log_at_level {
 /// ```
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LoggingHooks {
+    /// The log level for hook events.
     level: LogLevel,
 }
 

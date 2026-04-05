@@ -5,10 +5,14 @@
 //! error type (e.g., [`LlmError`], [`ToolError`], [`AgentError`]), and
 //! this module re-exports them for convenience.
 
-// Re-export submodule error types for backward compatibility.
+// Re-export submodule error types for convenience.
+#[allow(clippy::module_name_repetitions)]
 pub use crate::agent::AgentError;
+#[allow(clippy::module_name_repetitions)]
 pub use crate::llms::LlmError;
+#[allow(clippy::module_name_repetitions)]
 pub use crate::memory::MemoryError;
+#[allow(clippy::module_name_repetitions)]
 pub use crate::tool::ToolError;
 
 /// Result type alias for machi operations.

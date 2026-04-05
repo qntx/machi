@@ -97,6 +97,7 @@ pub struct ExecArgs {
 
 /// Structured result of a command execution.
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct ExecResult {
     /// Process exit code (`None` if the process was killed or never started).
     pub exit_code: Option<i32>,

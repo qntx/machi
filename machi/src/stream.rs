@@ -15,6 +15,7 @@ use crate::usage::Usage;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub enum StreamChunk {
     /// Text content chunk.
     Text(String),
@@ -263,6 +264,7 @@ impl std::fmt::Display for StopReason {
 
 /// Aggregator for building complete content from stream chunks.
 #[derive(Debug, Clone, Default)]
+#[allow(clippy::module_name_repetitions)]
 pub struct StreamAggregator {
     /// Accumulated text content.
     text: String,
@@ -276,10 +278,14 @@ pub struct StreamAggregator {
     stop_reason: Option<StopReason>,
 }
 
+/// Builder for assembling tool calls from stream chunks.
 #[derive(Debug, Clone, Default)]
 struct ToolCallBuilder {
+    /// The tool call ID.
     id: String,
+    /// The function name.
     name: String,
+    /// Accumulated argument fragments.
     arguments: String,
 }
 

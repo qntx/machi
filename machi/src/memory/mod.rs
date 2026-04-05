@@ -41,6 +41,7 @@ mod session;
 #[cfg(feature = "memory-sqlite")]
 mod sqlite;
 
+#[allow(clippy::module_name_repetitions)]
 pub use error::MemoryError;
 pub use in_memory::InMemorySession;
 pub use session::{BoxedSession, Session, SharedSession};

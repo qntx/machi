@@ -18,7 +18,9 @@ use crate::message::Message;
 /// exclusive access. All data is ephemeral — lost when the value is dropped.
 #[derive(Debug)]
 pub struct InMemorySession {
+    /// Session identifier.
     id: String,
+    /// Message storage.
     messages: RwLock<Vec<Message>>,
 }
 

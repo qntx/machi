@@ -51,6 +51,7 @@ pub mod result;
 mod runner;
 
 pub use config::{Agent, Instructions, OutputSchema};
+#[allow(clippy::module_name_repetitions)]
 pub use error::AgentError;
 pub use result::{
     NextStep, RunConfig, RunEvent, RunResult, StepInfo, ToolCallRecord, ToolCallRequest, UserInput,

@@ -29,6 +29,7 @@ use crate::usage::Usage;
 /// The Runner evaluates the model's output and classifies it into one of these
 /// variants, each of which drives a different continuation path.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum NextStep {
     /// The LLM produced a final text answer — the run is complete.
     FinalOutput {
@@ -60,6 +61,7 @@ pub enum NextStep {
 
 /// A parsed tool call request extracted from the LLM response.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ToolCallRequest {
     /// The tool call ID from the model (used to correlate results).
     pub id: String,
@@ -85,6 +87,7 @@ impl From<&ToolCall> for ToolCallRequest {
 /// Passed to [`Runner::run`](super::Runner::run) to control execution behavior
 /// without modifying the [`Agent`](super::Agent) definition itself.
 #[derive(Clone, Default)]
+#[non_exhaustive]
 pub struct RunConfig {
     /// Global run-level lifecycle hooks.
     pub hooks: Option<SharedHooks>,
@@ -242,6 +245,8 @@ impl RunConfig {
 
 /// The final result of a completed agent run.
 #[derive(Debug)]
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
 pub struct RunResult {
     /// The final output produced by the agent.
     pub output: Value,
@@ -318,6 +323,7 @@ impl RunResult {
 /// Captures both the LLM interaction and any tool calls that were executed,
 /// providing a complete audit trail for debugging and observability.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct StepInfo {
     /// Step number (1-indexed).
     pub step: usize,
@@ -331,6 +337,7 @@ pub struct StepInfo {
 
 /// Record of a single tool call execution within a step.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ToolCallRecord {
     /// The tool call ID.
     pub id: String,
@@ -368,6 +375,7 @@ pub struct ToolCallRecord {
 /// rather than as a dedicated event variant, following Rust's idiomatic
 /// `try_stream` pattern.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum RunEvent {
     /// The agent run has started.
     RunStarted {
@@ -452,6 +460,7 @@ pub enum RunEvent {
 /// ].into();
 /// ```
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum UserInput {
     /// Plain text input (the most common case).
     Text(String),

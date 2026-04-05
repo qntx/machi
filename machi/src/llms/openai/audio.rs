@@ -12,6 +12,7 @@ use crate::error::{LlmError, Result};
 
 /// `OpenAI` text-to-speech request.
 #[derive(Debug, Clone, Serialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAISpeechRequest {
     pub model: String,
     pub input: String,
@@ -26,6 +27,7 @@ struct OpenAISpeechRequest {
 
 /// `OpenAI` transcription response (verbose JSON format).
 #[derive(Debug, Clone, Deserialize)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct OpenAITranscriptionResponse {
     pub text: String,
     #[serde(default)]

@@ -55,6 +55,7 @@ pub type SharedContextStrategy = std::sync::Arc<dyn ContextStrategy>;
 ///   so the LLM can continue the conversation coherently.
 /// - The strategy is called on every step, so it should be efficient.
 #[async_trait]
+#[allow(clippy::module_name_repetitions)]
 pub trait ContextStrategy: Send + Sync {
     /// Compact the message list.
     async fn compact(&self, messages: &[Message]) -> Result<Vec<Message>>;
@@ -66,6 +67,7 @@ pub trait ContextStrategy: Send + Sync {
 
 /// No-op strategy — returns messages unchanged (the default).
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct NoCompaction;
 
 #[async_trait]
@@ -88,6 +90,7 @@ impl ContextStrategy for NoCompaction {
 /// let strategy = SlidingWindow::new(20); // keep last 20 messages + system
 /// ```
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct SlidingWindow {
     /// Maximum number of non-system messages to retain.
     pub max_messages: usize,
@@ -138,6 +141,7 @@ impl ContextStrategy for SlidingWindow {
 /// let strategy = TokenBudget::new(120_000); // ~120k tokens
 /// ```
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct TokenBudget {
     /// Maximum estimated token count.
     pub max_tokens: usize,

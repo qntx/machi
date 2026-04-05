@@ -63,6 +63,7 @@ pub type SharedMiddleware = std::sync::Arc<dyn Middleware>;
 ///
 /// Provides read access to the current run state. Middleware can inspect
 /// the agent name, step number, and accumulated usage.
+#[derive(Debug, Clone)]
 pub struct MiddlewareContext {
     /// The underlying run context.
     pub run_context: RunContext,
@@ -73,7 +74,7 @@ pub struct MiddlewareContext {
 impl MiddlewareContext {
     /// Create a new middleware context.
     #[must_use]
-    pub fn new(run_context: RunContext, agent_name: String) -> Self {
+    pub const fn new(run_context: RunContext, agent_name: String) -> Self {
         Self {
             run_context,
             agent_name,

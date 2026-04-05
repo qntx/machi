@@ -161,7 +161,7 @@ impl<'a> RunState<'a> {
 
     /// Build a [`ChatRequest`] for the current step, applying context
     /// compaction if a strategy is configured.
-    async fn build_request(&mut self) -> Result<ChatRequest> {
+    async fn build_request(&self) -> Result<ChatRequest> {
         if let Some(ref strategy) = self.context_strategy {
             let compacted = strategy.compact(&self.messages).await?;
             Ok(Runner::build_request(
@@ -179,7 +179,7 @@ impl<'a> RunState<'a> {
     }
 
     /// Build a streaming [`ChatRequest`] for the current step.
-    async fn build_stream_request(&mut self) -> Result<ChatRequest> {
+    async fn build_stream_request(&self) -> Result<ChatRequest> {
         let mut req = self.build_request().await?;
         req.stream = true;
         Ok(req)
@@ -705,6 +705,7 @@ impl Runner {
     ///
     /// Results are appended to `messages` in the original call order regardless
     /// of execution order.
+    #[allow(clippy::too_many_arguments)]
     async fn execute_tool_calls(
         calls: &[ToolCallRequest],
         agent: &Agent,

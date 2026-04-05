@@ -76,7 +76,7 @@ pub enum InterruptBehavior {
 ///
 /// All fields default to the most permissive/safe values, so tools that don't
 /// override [`DynTool::metadata`] behave exactly as before.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ToolMetadata {
     /// How this tool interacts with concurrent execution.
     pub concurrency: ConcurrencyMode,

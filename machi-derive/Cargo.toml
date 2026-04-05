@@ -6,6 +6,8 @@ license.workspace = true
 repository.workspace = true
 readme = "README.md"
 description = "Procedural macros for machi AI agents framework"
+keywords = ["ai", "agent", "llm", "derive", "macro"]
+categories = ["api-bindings", "development-tools::procedural-macro-helpers"]
 
 [lib]
 proc-macro = true

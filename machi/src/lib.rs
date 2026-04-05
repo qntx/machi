@@ -56,6 +56,11 @@
 #[cfg(feature = "a2a")]
 pub mod a2a;
 pub mod agent;
+#[allow(
+    clippy::module_name_repetitions,
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums
+)]
 pub mod context;
 pub mod audio;
 pub mod chat;
@@ -67,6 +72,11 @@ pub mod llms;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod memory;
+#[allow(
+    clippy::module_name_repetitions,
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums
+)]
 pub mod middleware;
 pub mod message;
 pub mod prelude;

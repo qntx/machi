@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description.workspace = true
+readme = "README.md"
+keywords = ["ai", "agent", "llm", "cli"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "machi"

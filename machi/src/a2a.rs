@@ -328,15 +328,23 @@ impl A2aAgent {
                     output.push_str(&text);
                 }
                 // Also extract text from task artifacts.
-                for artifact in &task.artifacts {
-                    for part in &artifact.parts {
-                        if let Some(text) = part.as_text() {
-                            if !output.is_empty() {
-                                output.push('\n');
-                            }
-                            output.push_str(text);
-                        }
+                Self::collect_artifact_text(&task.artifacts, output);
+            }
+        }
+    }
+
+    /// Extract text from a list of artifacts into the output buffer.
+    fn collect_artifact_text(
+        artifacts: &[ra2a::types::Artifact],
+        output: &mut String,
+    ) {
+        for artifact in artifacts {
+            for part in &artifact.parts {
+                if let Some(text) = part.as_text() {
+                    if !output.is_empty() {
+                        output.push('\n');
                     }
+                    output.push_str(text);
                 }
             }
         }

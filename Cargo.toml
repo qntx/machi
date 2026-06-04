@@ -27,7 +27,7 @@ proc-macro2 = "1.0.106"
 quote = "1.0.45"
 ra2a = "0.9.3"
 regex = "1.12.3"
-reqwest = { version = "0.13.2", features = ["json", "stream", "multipart"] }
+reqwest = { version = "0.13.4", features = ["json", "stream", "multipart"] }
 reqwest-middleware = { version = "0.5.1", features = ["json", "multipart"] }
 rmcp = { version = "1.3.0", features = [
     "client",

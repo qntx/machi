@@ -1271,9 +1271,9 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "ra2a"
-version = "0.9.3"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17b68f1bed65f88d09cbdde48311f2f1aaa9d6ce761acfd4dde176df49f30202"
+checksum = "dee2641520f47153feca6555d4b7d0bfc5b2b74e07a948a193905e433c1b6808"
 dependencies = [
  "axum",
  "base64",

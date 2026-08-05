@@ -19,7 +19,7 @@ machi-derive = { version = "0.8", path = "machi-derive" }
 
 async-stream = "0.3.6"
 async-trait = "0.1.89"
-base64 = "0.22.1"
+base64 = "0.23.0"
 convert_case = "0.11.0"
 darling = "0.23.0"
 futures = "0.3.32"

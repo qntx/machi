@@ -5,7 +5,7 @@ use std::sync::Arc;
 use machi_tools::{SharedTool, ToolRegistry};
 use machi_types::{ErrorCode, MachiError};
 
-use crate::definition::{AgentDefinition, CompletionRequirement, Instructions, ToolPolicy};
+use crate::definition::{AgentDefinition, CompletionRequirement, Instructions};
 use crate::instance::Agent;
 
 /// Builds a validated [`Agent`].
@@ -44,16 +44,7 @@ impl AgentBuilder {
     #[must_use]
     pub fn named(name: impl Into<String>) -> Self {
         Self {
-            definition: Some(AgentDefinition {
-                name: name.into(),
-                description: String::new(),
-                instructions: Instructions::Static(String::new()),
-                model: "default".into(),
-                tools: ToolPolicy::InheritAll,
-                output_schema: None,
-                completion: None,
-                max_steps: 32,
-            }),
+            definition: Some(AgentDefinition::new(name)),
             tools: Vec::new(),
         }
     }
@@ -130,19 +121,12 @@ impl AgentBuilder {
         })?;
         definition.validate()?;
 
-        let filtered: Vec<SharedTool> = match &definition.tools {
-            ToolPolicy::InheritAll => self.tools,
-            ToolPolicy::Allowlist(allow) => self
-                .tools
-                .into_iter()
-                .filter(|t| allow.iter().any(|n| n == t.name()))
-                .collect(),
-            ToolPolicy::Denylist(deny) => self
-                .tools
-                .into_iter()
-                .filter(|t| !deny.iter().any(|n| n == t.name()))
-                .collect(),
-        };
+        // Definition-level allowed_tools / denylist applied at resolution (W5.4).
+        let filtered: Vec<SharedTool> = self
+            .tools
+            .into_iter()
+            .filter(|t| definition.tools.admits(t.name()))
+            .collect();
 
         let system_prompt = definition.instructions.resolve();
         let tools = Arc::new(ToolRegistry::from_tools(filtered));
@@ -169,5 +153,33 @@ mod tests {
             .expect("build");
         assert_eq!(agent.name(), "assistant");
         assert_eq!(agent.system_prompt(), "You are helpful.");
+    }
+
+    #[test]
+    fn allowed_tools_filtered_at_build() {
+        use std::sync::Arc;
+
+        use machi_tools::CalcTool;
+
+        let mut def = AgentDefinition::new("x");
+        def.tools = crate::definition::ToolPolicy::Allowlist(vec!["calc".into()]);
+        def.model = "m".into();
+        // Two calc instances under different names aren't available; policy drops non-calc.
+        // Empty allowlist of "other" leaves no tools.
+        let agent_empty = AgentBuilder::from_definition({
+            let mut d = def.clone();
+            d.tools = crate::definition::ToolPolicy::Allowlist(vec!["other".into()]);
+            d
+        })
+        .tools(vec![Arc::new(CalcTool)])
+        .build()
+        .expect("build");
+        assert!(agent_empty.tools().is_empty());
+
+        let agent = AgentBuilder::from_definition(def)
+            .tools(vec![Arc::new(CalcTool)])
+            .build()
+            .expect("build");
+        assert_eq!(agent.tools().names(), vec!["calc".to_owned()]);
     }
 }

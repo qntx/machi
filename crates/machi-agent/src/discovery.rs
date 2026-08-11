@@ -1,19 +1,32 @@
-//! Discover agent definitions from Markdown files with YAML frontmatter.
+//! Multi-level agent discovery with shadowing rules (W5.1).
+//!
+//! Precedence (later wins except user↛builtin):
+//! 1. Builtin catalogue
+//! 2. User `~/.machi/agents` — **skipped** when the name collides with a builtin
+//! 3. Project `.machi/agents` walking cwd → filesystem root (nearer overrides farther)
+//!
+//! Disabled definitions (`enabled: false`) are omitted (invisible == not callable).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use machi_tools::CapabilityMode;
 use machi_types::{ErrorCode, MachiError};
 
-use crate::definition::{AgentDefinition, Instructions};
+use crate::builtin::builtin_definitions;
+use crate::definition::{AgentDefinition, AgentSource, Instructions, ToolPolicy};
 
 /// Default relative directory under a project root.
 pub const PROJECT_AGENTS_DIR: &str = ".machi/agents";
 
+/// Relative directory under the user home.
+pub const USER_AGENTS_DIR: &str = ".machi/agents";
+
 /// Parse a definition file: YAML frontmatter between `---` fences, body = instructions.
 ///
-/// Frontmatter keys: `name`, `description`, `model`, `max_steps` (optional).
-/// Unknown keys are ignored (forward compatible).
+/// Frontmatter keys: `name`, `description`, `model`, `max_steps`, `enabled`,
+/// `capability`, `allowed_tools` / `tools` (comma-separated), `denied_tools`.
 ///
 /// # Errors
 ///
@@ -41,18 +54,59 @@ pub fn parse_definition_markdown(raw: &str) -> Result<AgentDefinition, MachiErro
         .get("max_steps")
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(32);
+    let enabled = meta
+        .get("enabled")
+        .map(|s| {
+            !matches!(
+                s.to_ascii_lowercase().as_str(),
+                "false" | "0" | "no" | "off"
+            )
+        })
+        .unwrap_or(true);
+    let capability = meta
+        .get("capability")
+        .or_else(|| meta.get("capability_mode"))
+        .and_then(|s| CapabilityMode::parse(s));
+    let tools = parse_tool_policy(&meta);
     let def = AgentDefinition {
         name,
         description,
         instructions: Instructions::Static(body.trim().to_owned()),
         model,
-        tools: crate::definition::ToolPolicy::InheritAll,
+        tools,
         output_schema: None,
         completion: None,
         max_steps,
+        enabled,
+        capability,
+        source: None,
     };
     def.validate()?;
     Ok(def)
+}
+
+fn parse_tool_policy(meta: &BTreeMap<String, String>) -> ToolPolicy {
+    if let Some(raw) = meta.get("allowed_tools").or_else(|| meta.get("tools")) {
+        let list = split_csv(raw);
+        if !list.is_empty() {
+            return ToolPolicy::Allowlist(list);
+        }
+    }
+    if let Some(raw) = meta.get("denied_tools") {
+        let list = split_csv(raw);
+        if !list.is_empty() {
+            return ToolPolicy::Denylist(list);
+        }
+    }
+    ToolPolicy::InheritAll
+}
+
+fn split_csv(raw: &str) -> Vec<String> {
+    raw.split([',', ' '])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Load a single file.
@@ -75,8 +129,7 @@ pub fn load_file(path: impl AsRef<Path>) -> Result<AgentDefinition, MachiError> 
 ///
 /// # Errors
 ///
-/// Directory read failures; individual bad files are skipped and collected as soft errors
-/// only when `strict` is true (then first error fails).
+/// Directory read failures; individual bad files are skipped unless `strict`.
 pub fn discover_in_dir(
     root: impl AsRef<Path>,
     strict: bool,
@@ -119,6 +172,99 @@ pub fn discover_project(cwd: impl AsRef<Path>) -> Result<Vec<AgentDefinition>, M
     discover_in_dir(dir, false)
 }
 
+/// User home agents directory (`$HOME/.machi/agents`), when resolvable.
+#[must_use]
+pub fn user_agents_dir() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(USER_AGENTS_DIR))
+}
+
+/// Discover user-level agents when the directory exists.
+///
+/// # Errors
+///
+/// Directory read failures.
+pub fn discover_user() -> Result<Vec<AgentDefinition>, MachiError> {
+    let Some(dir) = user_agents_dir() else {
+        return Ok(Vec::new());
+    };
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    discover_in_dir(dir, false)
+}
+
+/// Walk `cwd` → filesystem root collecting existing `.machi/agents` dirs
+/// (nearest first).
+#[must_use]
+pub fn project_agent_dirs(cwd: impl AsRef<Path>) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut cur = Some(cwd.as_ref().to_path_buf());
+    let mut seen = BTreeSet::new();
+    while let Some(dir) = cur {
+        let agents = dir.join(PROJECT_AGENTS_DIR);
+        if agents.is_dir() {
+            let canon = agents.clone();
+            if seen.insert(canon.clone()) {
+                out.push(canon);
+            }
+        }
+        let parent = dir.parent().map(Path::to_path_buf);
+        if parent.as_ref() == Some(&dir) {
+            break;
+        }
+        cur = parent;
+    }
+    out
+}
+
+/// Full multi-level resolve with shadowing (W5.1).
+///
+/// # Errors
+///
+/// I/O failures from strict project/user discovery (non-strict soft-skips bad files).
+pub fn resolve_agents(cwd: impl AsRef<Path>) -> Result<Vec<AgentDefinition>, MachiError> {
+    let cwd = cwd.as_ref();
+    let mut map: BTreeMap<String, AgentDefinition> = BTreeMap::new();
+
+    // 1. Builtins
+    let mut builtin_names = BTreeSet::new();
+    for mut def in builtin_definitions() {
+        if !def.enabled {
+            continue;
+        }
+        builtin_names.insert(def.name.clone());
+        def.source = Some(AgentSource::Builtin);
+        map.insert(def.name.clone(), def);
+    }
+
+    // 2. User — skip names that collide with builtin
+    for mut def in discover_user()? {
+        if !def.enabled {
+            continue;
+        }
+        if builtin_names.contains(&def.name) {
+            continue;
+        }
+        def.source = Some(AgentSource::User);
+        map.insert(def.name.clone(), def);
+    }
+
+    // 3. Project dirs: farthest → nearest so nearer overrides
+    let mut dirs = project_agent_dirs(cwd);
+    dirs.reverse();
+    for dir in dirs {
+        for mut def in discover_in_dir(&dir, false)? {
+            if !def.enabled {
+                continue;
+            }
+            def.source = Some(AgentSource::Project);
+            map.insert(def.name.clone(), def);
+        }
+    }
+
+    Ok(map.into_values().collect())
+}
+
 /// Find by name in a directory (file stem or frontmatter name).
 ///
 /// # Errors
@@ -141,7 +287,23 @@ pub fn by_name_in_dir(root: impl AsRef<Path>, name: &str) -> Result<AgentDefinit
     ))
 }
 
-/// Convenience: `{cwd}/.machi/agents` then optional extra roots.
+/// Resolve `name` via multi-level discovery (cwd defaults to current dir).
+///
+/// # Errors
+///
+/// Not found after searching all layers.
+pub fn by_name_resolved(name: &str, cwd: impl AsRef<Path>) -> Result<AgentDefinition, MachiError> {
+    resolve_agents(cwd)?
+        .into_iter()
+        .find(|d| d.name == name)
+        .ok_or_else(|| {
+            MachiError::new(ErrorCode::AgentNotFound, format!("agent not found: {name}"))
+        })
+}
+
+/// Convenience: `{cwd}/.machi/agents` then optional extra roots (legacy).
+///
+/// Prefer [`by_name_resolved`] for full precedence.
 ///
 /// # Errors
 ///
@@ -165,6 +327,12 @@ pub fn by_name(name: &str, roots: &[PathBuf]) -> Result<AgentDefinition, MachiEr
     ))
 }
 
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
 fn split_frontmatter(raw: &str) -> Result<(String, String), MachiError> {
     let text = raw.trim_start_matches('\u{feff}');
     let Some(rest) = text.strip_prefix("---") else {
@@ -185,10 +353,8 @@ fn split_frontmatter(raw: &str) -> Result<(String, String), MachiError> {
 }
 
 /// Minimal `key: value` YAML map (string values only; no nested objects).
-fn parse_simple_yaml_map(
-    front: &str,
-) -> Result<std::collections::BTreeMap<String, String>, MachiError> {
-    let mut map = std::collections::BTreeMap::new();
+fn parse_simple_yaml_map(front: &str) -> Result<BTreeMap<String, String>, MachiError> {
+    let mut map = BTreeMap::new();
     for line in front.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -205,7 +371,10 @@ fn parse_simple_yaml_map(
         if (val.starts_with('"') && val.ends_with('"'))
             || (val.starts_with('\'') && val.ends_with('\''))
         {
-            val = val[1..val.len().saturating_sub(1)].to_owned();
+            val = val
+                .get(1..val.len().saturating_sub(1))
+                .unwrap_or("")
+                .to_owned();
         }
         map.insert(key, val);
     }
@@ -213,12 +382,14 @@ fn parse_simple_yaml_map(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, reason = "unit tests")]
 mod tests {
     use std::io::Write;
 
     use tempfile::tempdir;
 
     use super::*;
+    use crate::builtin::{EXPLORE, GENERAL_PURPOSE};
 
     #[test]
     fn parses_frontmatter() {
@@ -227,6 +398,8 @@ name: reviewer\n\
 description: Reviews code\n\
 model: mock\n\
 max_steps: 8\n\
+allowed_tools: calc, read_file\n\
+capability: read_only\n\
 ---\n\
 \n\
 You review diffs carefully.\n";
@@ -235,6 +408,18 @@ You review diffs carefully.\n";
         assert_eq!(def.model, "mock");
         assert_eq!(def.max_steps, 8);
         assert!(def.instructions.resolve().contains("review diffs"));
+        assert_eq!(
+            def.tools,
+            ToolPolicy::Allowlist(vec!["calc".into(), "read_file".into()])
+        );
+        assert_eq!(def.capability, Some(CapabilityMode::ReadOnly));
+    }
+
+    #[test]
+    fn parses_disabled() {
+        let raw = "---\nname: x\nmodel: m\nenabled: false\n---\n\nHi.\n";
+        let def = parse_definition_markdown(raw).expect("parse");
+        assert!(!def.enabled);
     }
 
     #[test]
@@ -246,5 +431,66 @@ You review diffs carefully.\n";
         let defs = discover_in_dir(dir.path(), true).expect("discover");
         assert_eq!(defs.len(), 1);
         assert_eq!(defs.first().map(|d| d.name.as_str()), Some("helper"));
+    }
+
+    #[test]
+    fn resolve_project_overrides_builtin() {
+        let root = tempdir().expect("tmp");
+        let agents = root.path().join(PROJECT_AGENTS_DIR);
+        fs::create_dir_all(&agents).expect("mkdir");
+        let path = agents.join("general-purpose.md");
+        let mut f = fs::File::create(&path).expect("create");
+        write!(
+            f,
+            "---\nname: general-purpose\nmodel: custom\n---\n\nProject override.\n"
+        )
+        .expect("write");
+        let defs = resolve_agents(root.path()).expect("resolve");
+        let gp = defs.iter().find(|d| d.name == GENERAL_PURPOSE).expect("gp");
+        assert_eq!(gp.model, "custom");
+        assert_eq!(gp.source, Some(AgentSource::Project));
+        assert!(gp.instructions.resolve().contains("Project override"));
+        // explore still builtin
+        let ex = defs.iter().find(|d| d.name == EXPLORE).expect("explore");
+        assert_eq!(ex.source, Some(AgentSource::Builtin));
+    }
+
+    #[test]
+    fn resolve_skips_disabled_project() {
+        let root = tempdir().expect("tmp");
+        let agents = root.path().join(PROJECT_AGENTS_DIR);
+        fs::create_dir_all(&agents).expect("mkdir");
+        let path = agents.join("ghost.md");
+        let mut f = fs::File::create(&path).expect("create");
+        write!(
+            f,
+            "---\nname: ghost\nmodel: m\nenabled: false\n---\n\nNope.\n"
+        )
+        .expect("write");
+        let defs = resolve_agents(root.path()).expect("resolve");
+        assert!(defs.iter().all(|d| d.name != "ghost"));
+    }
+
+    #[test]
+    fn nearer_project_overrides_farther() {
+        let root = tempdir().expect("tmp");
+        let far = root.path().join(PROJECT_AGENTS_DIR);
+        fs::create_dir_all(&far).expect("mkdir far");
+        write!(
+            fs::File::create(far.join("worker.md")).expect("f"),
+            "---\nname: worker\nmodel: far\n---\n\nFar.\n"
+        )
+        .expect("w");
+        let near_cwd = root.path().join("pkg");
+        let near = near_cwd.join(PROJECT_AGENTS_DIR);
+        fs::create_dir_all(&near).expect("mkdir near");
+        write!(
+            fs::File::create(near.join("worker.md")).expect("f"),
+            "---\nname: worker\nmodel: near\n---\n\nNear.\n"
+        )
+        .expect("w");
+        let defs = resolve_agents(&near_cwd).expect("resolve");
+        let w = defs.iter().find(|d| d.name == "worker").expect("worker");
+        assert_eq!(w.model, "near");
     }
 }

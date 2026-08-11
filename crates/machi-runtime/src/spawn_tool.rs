@@ -23,12 +23,15 @@ use crate::host::{SessionHost, SpawnOpts};
 pub struct SpawnAgentTool {
     host: Arc<dyn SessionHost>,
     default_capability: CapabilityMode,
+    /// When set, only these `agent_type` values may be spawned (fail-closed).
+    allowed_agent_types: Option<Vec<String>>,
 }
 
 impl std::fmt::Debug for SpawnAgentTool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SpawnAgentTool")
             .field("default_capability", &self.default_capability)
+            .field("allowed_agent_types", &self.allowed_agent_types)
             .finish_non_exhaustive()
     }
 }
@@ -40,6 +43,7 @@ impl SpawnAgentTool {
         Self {
             host,
             default_capability: CapabilityMode::Full,
+            allowed_agent_types: None,
         }
     }
 
@@ -47,6 +51,16 @@ impl SpawnAgentTool {
     #[must_use]
     pub const fn with_default_capability(mut self, mode: CapabilityMode) -> Self {
         self.default_capability = mode;
+        self
+    }
+
+    /// Restrict spawnable `agent_type` values (W5.3). Empty allowlist rejects all typed spawns.
+    #[must_use]
+    pub fn with_allowed_agent_types(
+        mut self,
+        types: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.allowed_agent_types = Some(types.into_iter().map(Into::into).collect());
         self
     }
 }
@@ -141,6 +155,20 @@ impl DynTool for SpawnAgentTool {
             .get("agent_type")
             .and_then(Value::as_str)
             .map(str::to_owned);
+        if let Some(allow) = &self.allowed_agent_types {
+            let Some(ref t) = agent_type else {
+                return Err(MachiError::new(
+                    ErrorCode::ToolInvalidArgs,
+                    "spawn_agent requires agent_type when an allowlist is configured",
+                ));
+            };
+            if !allow.iter().any(|a| a == t) {
+                return Err(MachiError::new(
+                    ErrorCode::ToolInvalidArgs,
+                    format!("agent_type '{t}' is not in the spawn allowlist"),
+                ));
+            }
+        }
         let output_schema = arguments.get("output_schema").cloned();
         let max_output_tokens = arguments.get("max_output_tokens").and_then(Value::as_u64);
 
@@ -262,5 +290,29 @@ mod tests {
             "unexpected message: {}",
             err.message()
         );
+    }
+
+    #[tokio::test]
+    async fn spawn_tool_agent_type_allowlist() {
+        let sampler = Arc::new(MockSampler::new());
+        sampler.map_user_text("task", "ok");
+        let host: Arc<dyn SessionHost> = Arc::new(InProcessHost::new(sampler, Vec::new()));
+        let tool = SpawnAgentTool::new(host).with_allowed_agent_types(["explore"]);
+        let err = tool
+            .call(
+                ToolCallContext::default(),
+                json!({"prompt": "task", "agent_type": "plan"}),
+            )
+            .await
+            .expect_err("allowlist");
+        assert_eq!(err.code(), ErrorCode::ToolInvalidArgs);
+        let ok = tool
+            .call(
+                ToolCallContext::default(),
+                json!({"prompt": "task", "agent_type": "explore"}),
+            )
+            .await
+            .expect("allowed");
+        assert!(!ok.is_error);
     }
 }

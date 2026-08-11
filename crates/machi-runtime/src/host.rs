@@ -17,13 +17,15 @@ use machi_agent::{
 };
 use machi_llm::LlmSampler;
 use machi_obs::{NoopMetrics, SharedMetrics, record_spawn};
+use machi_state::ChatStateHandle;
 use machi_tools::SharedTool;
 use machi_tools::registry::CapabilityMode;
 use machi_types::{AgentId, ErrorCode, MachiError, Message, Usage};
+use machi_workflow::{WorkflowRunStatus, WorkflowRunStore};
 use serde_json::Value;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, Span, info_span};
 
 use crate::isolation::{InProcessIsolation, IsolationBackend};
 use crate::state::VecConversationState;
@@ -221,6 +223,10 @@ pub struct InProcessHost {
     /// Isolation backend for child environments (default in-process).
     isolation: Arc<dyn IsolationBackend>,
     metrics: SharedMetrics,
+    /// Parent session handle: seeds `fork_context` when `fork_messages` is unset.
+    parent_handle: Option<ChatStateHandle>,
+    /// Workflow run store for `resume_from` lookups.
+    run_store: Option<Arc<dyn WorkflowRunStore>>,
 }
 
 impl std::fmt::Debug for InProcessHost {
@@ -253,10 +259,12 @@ impl InProcessHost {
             max_spawn_depth: Some(DEFAULT_MAX_SPAWN_DEPTH),
             concurrency: Some(Arc::new(Semaphore::new(DEFAULT_MAX_CONCURRENT_CHILDREN))),
             max_concurrent_children: Some(DEFAULT_MAX_CONCURRENT_CHILDREN),
-            agent_registry: AgentRegistry::new(),
+            agent_registry: AgentRegistry::with_builtins(),
             prompt_assembler: Arc::new(IdentityAssembler),
             isolation: Arc::new(InProcessIsolation),
             metrics: Arc::new(NoopMetrics),
+            parent_handle: None,
+            run_store: None,
         }
     }
 
@@ -322,6 +330,20 @@ impl InProcessHost {
         self
     }
 
+    /// Parent conversation handle used when `fork_context` is set without messages.
+    #[must_use]
+    pub fn with_parent_handle(mut self, handle: ChatStateHandle) -> Self {
+        self.parent_handle = Some(handle);
+        self
+    }
+
+    /// Workflow run store enabling `resume_from` on spawn opts.
+    #[must_use]
+    pub fn with_run_store(mut self, store: Arc<dyn WorkflowRunStore>) -> Self {
+        self.run_store = Some(store);
+        self
+    }
+
     /// Override child system instructions (used when `agent_type` is unset).
     #[must_use]
     pub fn with_instructions(mut self, instructions: impl Into<String>) -> Self {
@@ -372,33 +394,82 @@ impl InProcessHost {
         Ok(())
     }
 
-    fn check_unsupported_opts(opts: &SpawnOpts) -> Result<(), MachiError> {
-        if opts.fork_context && opts.fork_messages.is_none() {
+    fn check_fork_opts(opts: &SpawnOpts, has_parent_handle: bool) -> Result<(), MachiError> {
+        if opts.fork_context && opts.fork_messages.is_none() && !has_parent_handle {
             return Err(MachiError::new(
                 ErrorCode::HostUnsupported,
-                "fork_context requires fork_messages (parent conversation seed)",
-            ));
-        }
-        if opts.resume_from.is_some() {
-            return Err(MachiError::new(
-                ErrorCode::HostUnsupported,
-                "resume_from is not supported by InProcessHost",
+                "fork_context requires fork_messages or host parent_handle",
             ));
         }
         Ok(())
     }
 
-    fn child_state(opts: &SpawnOpts) -> Result<VecConversationState, MachiError> {
-        if opts.fork_context {
-            let msgs = opts.fork_messages.as_ref().ok_or_else(|| {
-                MachiError::new(
-                    ErrorCode::HostUnsupported,
-                    "fork_context requires fork_messages",
-                )
-            })?;
-            Ok(VecConversationState::from_messages(msgs.clone()))
-        } else {
-            Ok(VecConversationState::new())
+    async fn child_state(&self, opts: &SpawnOpts) -> Result<VecConversationState, MachiError> {
+        if !opts.fork_context {
+            return Ok(VecConversationState::new());
+        }
+        if let Some(msgs) = &opts.fork_messages {
+            return Ok(VecConversationState::from_messages(msgs.clone()));
+        }
+        if let Some(handle) = &self.parent_handle {
+            let msgs = handle.messages().await;
+            return Ok(VecConversationState::from_messages(msgs));
+        }
+        Err(MachiError::new(
+            ErrorCode::HostUnsupported,
+            "fork_context requires fork_messages or host parent_handle",
+        ))
+    }
+
+    /// Resolve `resume_from` via [`WorkflowRunStore`] when configured.
+    fn try_resume(&self, opts: &SpawnOpts) -> Result<Option<AgentRunResult>, MachiError> {
+        let Some(id) = opts.resume_from.as_deref() else {
+            return Ok(None);
+        };
+        let Some(store) = &self.run_store else {
+            return Err(MachiError::new(
+                ErrorCode::HostUnsupported,
+                "resume_from requires host run_store (WorkflowRunStore)",
+            ));
+        };
+        let rec = store.get(id).map_err(|e| {
+            MachiError::new(ErrorCode::HostSpawn, format!("workflow run store: {e}"))
+        })?;
+        let Some(rec) = rec else {
+            return Err(MachiError::new(
+                ErrorCode::HostUnsupported,
+                format!("resume_from run_id '{id}' not found in WorkflowRunStore"),
+            ));
+        };
+        match rec.status {
+            WorkflowRunStatus::Completed => {
+                let output = rec
+                    .message
+                    .clone()
+                    .map_or_else(|| Value::String(rec.name.clone()), Value::String);
+                Ok(Some(AgentRunResult {
+                    agent_id: AgentId::generate(),
+                    label: opts.label.clone().or_else(|| Some(rec.name.clone())),
+                    success: true,
+                    output,
+                    cancelled: false,
+                    usage: Usage::zero(),
+                    duration_ms: 0,
+                    steps: 0,
+                }))
+            }
+            WorkflowRunStatus::Paused | WorkflowRunStatus::BudgetExceeded => Err(MachiError::new(
+                ErrorCode::HostUnsupported,
+                format!(
+                    "resume_from '{id}' is {:?}; resume via workflow engine (journal {})",
+                    rec.status,
+                    rec.journal_path.display()
+                ),
+            )),
+            other => Err(MachiError::new(
+                ErrorCode::HostUnsupported,
+                format!("resume_from '{id}' has non-resumable status {other:?}"),
+            )),
         }
     }
 
@@ -445,6 +516,17 @@ impl InProcessHost {
         }
     }
 
+    fn effective_capability(&self, opts: &SpawnOpts) -> CapabilityMode {
+        let mut mode = opts.capability_mode;
+        if let Some(name) = opts.agent_type.as_deref()
+            && let Some(def) = self.agent_registry.get(name)
+            && let Some(def_cap) = def.capability
+        {
+            mode = mode.intersect(def_cap);
+        }
+        mode
+    }
+
     fn build_child(&self, opts: &SpawnOpts) -> Result<Agent, MachiError> {
         let mut builder = if let Some(name) = opts.agent_type.as_deref() {
             let def = self.agent_registry.require(name)?.clone();
@@ -474,10 +556,13 @@ impl InProcessHost {
     async fn spawn_one(&self, opts: SpawnOpts) -> Result<AgentRunResult, MachiError> {
         let agent_id = AgentId::generate();
         let label = opts.label.clone();
+        let parent = Span::current();
         let span = info_span!(
+            parent: parent,
             "machi.spawn",
             machi.agent_id = %agent_id,
             machi.agent_label = label.as_deref().unwrap_or(""),
+            machi.agent_type = opts.agent_type.as_deref().unwrap_or(""),
             machi.capability = ?opts.capability_mode,
             machi.spawn_depth = opts.depth,
         );
@@ -489,7 +574,10 @@ impl InProcessHost {
                     "spawn cancelled before start",
                 ));
             }
-            Self::check_unsupported_opts(&opts)?;
+            if let Some(resumed) = self.try_resume(&opts)? {
+                return Ok(resumed);
+            }
+            Self::check_fork_opts(&opts, self.parent_handle.is_some())?;
             self.check_depth(opts.depth)?;
             let _permit = self.try_acquire_concurrency()?;
             self.reserve_slot()?;
@@ -497,11 +585,17 @@ impl InProcessHost {
             let isolation_env = self.isolation.prepare(&opts).await?;
             let started = Instant::now();
             let agent = self.build_child(&opts)?;
-            let mut state = Self::child_state(&opts)?;
+            let mut state = self.child_state(&opts).await?;
+            let capability_mode = self.effective_capability(&opts);
+            let max_steps = opts.max_steps.or_else(|| {
+                opts.agent_type
+                    .as_deref()
+                    .and_then(|n| self.agent_registry.get(n).map(|d| d.max_steps))
+            });
             let max_output_tokens = opts.max_output_tokens.and_then(|n| u32::try_from(n).ok());
             let turn_opts = TurnOptions {
-                max_steps: opts.max_steps,
-                capability_mode: opts.capability_mode,
+                max_steps,
+                capability_mode,
                 cancel: opts.cancel.clone(),
                 agent_id: Some(agent_id.clone()),
                 metrics: Arc::clone(&self.metrics),
@@ -726,6 +820,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fork_context_from_parent_handle() {
+        use machi_state::ChatStateHandle;
+        use machi_types::Message;
+
+        let sampler = Arc::new(MockSampler::new());
+        sampler.map_user_text("continue", "handle-fork");
+        let handle = ChatStateHandle::spawn(vec![Message::user("seed"), Message::assistant("a")]);
+        let host = InProcessHost::new(sampler, vec![]).with_parent_handle(handle);
+        let run = host
+            .spawn_agent(SpawnOpts::new("continue").with_fork_context(true))
+            .await
+            .expect("fork");
+        assert_eq!(run.output, Value::String("handle-fork".into()));
+    }
+
+    #[tokio::test]
+    async fn resume_from_completed_run_store() {
+        use std::path::PathBuf;
+        use std::sync::Arc;
+
+        use machi_workflow::{MemoryWorkflowRunStore, WorkflowOutcome, WorkflowRunRecord};
+
+        let sampler = Arc::new(MockSampler::new());
+        let store = Arc::new(MemoryWorkflowRunStore::new());
+        let mut rec = WorkflowRunRecord::new_running("r1", "wf", PathBuf::from("/tmp/j.jsonl"));
+        rec.apply_outcome(&WorkflowOutcome::Completed { result: json!({}) });
+        rec.message = Some("cached-output".into());
+        store.put(rec).expect("put");
+        let host = InProcessHost::new(sampler, vec![]).with_run_store(store);
+        let run = host
+            .spawn_agent(SpawnOpts::new("unused").with_resume_from("r1"))
+            .await
+            .expect("resume");
+        assert!(run.success);
+        assert_eq!(run.output, Value::String("cached-output".into()));
+    }
+
+    #[tokio::test]
+    async fn builtin_explore_spawnable() {
+        let sampler = Arc::new(MockSampler::new());
+        sampler.map_user_text("look", "found");
+        let host = InProcessHost::new(sampler, vec![]);
+        let run = host
+            .spawn_agent(SpawnOpts::new("look").with_agent_type("explore"))
+            .await
+            .expect("explore");
+        assert_eq!(run.output, Value::String("found".into()));
+    }
+
+    #[tokio::test]
     async fn fork_context_seeds_parent_messages() {
         use machi_types::Message;
 
@@ -760,16 +904,11 @@ mod tests {
     async fn agent_type_resolves_definition() {
         let sampler = Arc::new(MockSampler::new());
         sampler.map_user_text("do work", "from-def");
-        let def = AgentDefinition {
-            name: "worker".into(),
-            description: "w".into(),
-            instructions: machi_agent::Instructions::Static("Be brief.".into()),
-            model: "mock".into(),
-            tools: machi_agent::ToolPolicy::InheritAll,
-            output_schema: None,
-            completion: None,
-            max_steps: 4,
-        };
+        let mut def = AgentDefinition::new("worker");
+        def.description = "w".into();
+        def.instructions = machi_agent::Instructions::Static("Be brief.".into());
+        def.model = "mock".into();
+        def.max_steps = 4;
         let reg = AgentRegistry::from_definitions([def]);
         let host = InProcessHost::new(sampler, vec![]).with_agent_registry(reg);
         let run = host
@@ -785,16 +924,11 @@ mod tests {
 
         let sampler = Arc::new(MockSampler::new());
         sampler.map_user_text("task", "done");
-        let def = AgentDefinition {
-            name: "worker".into(),
-            description: "w".into(),
-            instructions: machi_agent::Instructions::Static("Body.".into()),
-            model: "mock".into(),
-            tools: machi_agent::ToolPolicy::InheritAll,
-            output_schema: None,
-            completion: None,
-            max_steps: 4,
-        };
+        let mut def = AgentDefinition::new("worker");
+        def.description = "w".into();
+        def.instructions = machi_agent::Instructions::Static("Body.".into());
+        def.model = "mock".into();
+        def.max_steps = 4;
         let asm = Arc::new(ProjectPromptAssembler::with_preamble("PREAMBLE_MARK"));
         let host = InProcessHost::new(sampler, vec![])
             .with_agent_definitions([def])

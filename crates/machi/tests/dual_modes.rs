@@ -514,20 +514,14 @@ mod dual {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_registry_and_fork_messages_e2e() {
-        use machi::{AgentDefinition, AgentRegistry, Instructions, Message, ToolPolicy};
+        use machi::{AgentDefinition, AgentRegistry, Instructions, Message};
 
         let sampler = Arc::new(MockSampler::new());
         sampler.map_user_text("continue", "forked");
-        let def = AgentDefinition {
-            name: "worker".into(),
-            description: String::new(),
-            instructions: Instructions::Static("focus".into()),
-            model: "mock".into(),
-            tools: ToolPolicy::InheritAll,
-            output_schema: None,
-            completion: None,
-            max_steps: 4,
-        };
+        let mut def = AgentDefinition::new("worker");
+        def.instructions = Instructions::Static("focus".into());
+        def.model = "mock".into();
+        def.max_steps = 4;
         let reg = AgentRegistry::from_definitions([def]);
         let host = InProcessHost::new(sampler, Vec::new()).with_agent_registry(reg);
         let parent = vec![Message::user("history"), Message::assistant("ok")];
@@ -669,6 +663,68 @@ mod dual {
             "{outcome2:?}"
         );
         assert_eq!(Journal::load(path).expect("final").len(), 1);
+    }
+
+    // ── W5 agent resolution / host ─────────────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn w5_builtin_types_spawnable() {
+        use machi::{EXPLORE, GENERAL_PURPOSE, PLAN};
+
+        let sampler = Arc::new(MockSampler::new());
+        sampler.map_user_text("gp", "ok-gp");
+        sampler.map_user_text("ex", "ok-ex");
+        sampler.map_user_text("pl", "ok-pl");
+        let host = InProcessHost::new(sampler, Vec::new());
+        for (prompt, ty, expect) in [
+            ("gp", GENERAL_PURPOSE, "ok-gp"),
+            ("ex", EXPLORE, "ok-ex"),
+            ("pl", PLAN, "ok-pl"),
+        ] {
+            let run = host
+                .spawn_agent(SpawnOpts::new(prompt).with_agent_type(ty))
+                .await
+                .unwrap_or_else(|e| panic!("spawn {ty}: {e}"));
+            assert!(run.success, "{ty}");
+            assert_eq!(run.output.as_str(), Some(expect), "{ty}");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn w5_fork_from_parent_handle_and_resume_store() {
+        use std::path::PathBuf;
+
+        use machi::{
+            ChatStateHandle, MemoryWorkflowRunStore, Message, WorkflowRunRecord, WorkflowRunStore,
+        };
+
+        let sampler = Arc::new(MockSampler::new());
+        sampler.map_user_text("continue", "from-handle");
+        let parent =
+            ChatStateHandle::spawn(vec![Message::user("history"), Message::assistant("prior")]);
+        let store = Arc::new(MemoryWorkflowRunStore::new());
+        let mut rec = WorkflowRunRecord::new_running("run-1", "done-wf", PathBuf::from("j.jsonl"));
+        rec.apply_outcome(&WorkflowOutcome::Completed {
+            result: serde_json::json!({"ok": true}),
+        });
+        store.put(rec).expect("put");
+
+        let host = InProcessHost::new(sampler, Vec::new())
+            .with_parent_handle(parent)
+            .with_run_store(store);
+
+        let forked = host
+            .spawn_agent(SpawnOpts::new("continue").with_fork_context(true))
+            .await
+            .expect("fork handle");
+        assert_eq!(forked.output.as_str(), Some("from-handle"));
+
+        let resumed = host
+            .spawn_agent(SpawnOpts::new("ignored").with_resume_from("run-1"))
+            .await
+            .expect("resume");
+        assert!(resumed.success);
+        assert_eq!(resumed.label.as_deref(), Some("done-wf"));
     }
 
     // ── W4 state / ledger ───────────────────────────────────────────────

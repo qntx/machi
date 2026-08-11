@@ -37,10 +37,12 @@
 pub use machi_agent as agent;
 #[cfg(feature = "runtime")]
 pub use machi_agent::{
-    Agent, AgentBuilder, AgentDefinition, AgentRegistry, CompletionRequirement, IdentityAssembler,
-    Instructions, PROJECT_AGENTS_DIR, PROJECT_AGENTS_MD, ProjectPromptAssembler, PromptAssembler,
-    ToolPolicy, agents_md_path, by_name, by_name_in_dir, discover_in_dir, discover_project,
-    load_file, parse_definition_markdown,
+    Agent, AgentBuilder, AgentDefinition, AgentRegistry, AgentSource, CompletionRequirement,
+    EXPLORE, GENERAL_PURPOSE, IdentityAssembler, Instructions, ORCHESTRATOR_DELEGATION_PROMPT,
+    PLAN, PROJECT_AGENTS_DIR, PROJECT_AGENTS_MD, ProjectPromptAssembler, PromptAssembler,
+    ToolPolicy, USER_AGENTS_DIR, agents_md_path, builtin_definitions, builtin_names, by_name,
+    by_name_in_dir, by_name_resolved, discover_in_dir, discover_project, discover_user, load_file,
+    parse_definition_markdown, project_agent_dirs, resolve_agents, user_agents_dir,
 };
 #[cfg(feature = "compaction")]
 pub use machi_compaction as compaction;

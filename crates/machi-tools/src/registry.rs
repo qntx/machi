@@ -8,7 +8,8 @@ use crate::metadata::CapabilityFlag;
 use crate::tool::{DynTool, SharedTool, ToolDefinition};
 
 /// How nested/session capability mode filters tools.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum CapabilityMode {
     /// All registered tools.
@@ -18,6 +19,30 @@ pub enum CapabilityMode {
     ReadOnly,
     /// Only tools that do not include execute/spawn (plan-friendly).
     Plan,
+}
+
+impl CapabilityMode {
+    /// Parse common string forms (`full`, `read_only`, `plan`).
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "full" => Some(Self::Full),
+            "read_only" | "read-only" | "readonly" => Some(Self::ReadOnly),
+            "plan" => Some(Self::Plan),
+            _ => None,
+        }
+    }
+
+    /// More restrictive of two modes (for definition ∩ request).
+    #[must_use]
+    pub const fn intersect(self, other: Self) -> Self {
+        use CapabilityMode::{Full, Plan, ReadOnly};
+        match (self, other) {
+            (ReadOnly, _) | (_, ReadOnly) => ReadOnly,
+            (Plan, _) | (_, Plan) => Plan,
+            (Full, Full) => Full,
+        }
+    }
 }
 
 /// Thread-safe tool registry.

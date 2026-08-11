@@ -144,19 +144,14 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::definition::{Instructions, ToolPolicy};
+    use crate::definition::Instructions;
 
     fn sample_def() -> AgentDefinition {
-        AgentDefinition {
-            name: "a".into(),
-            description: String::new(),
-            instructions: Instructions::Static("Be brief.".into()),
-            model: "mock".into(),
-            tools: ToolPolicy::InheritAll,
-            output_schema: None,
-            completion: None,
-            max_steps: 4,
-        }
+        let mut d = AgentDefinition::new("a");
+        d.instructions = Instructions::Static("Be brief.".into());
+        d.model = "mock".into();
+        d.max_steps = 4;
+        d
     }
 
     #[test]

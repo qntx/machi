@@ -1,25 +1,114 @@
+# Publish workspace crates to crates.io.
+#
+# Not using publish-crates.yml bare loop: crates.io rate-limits many *new*
+# crate names in one burst. This job skips already-published versions and
+# waits between uploads.
 name: Publish to crates.io
 
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Bottom-up dependency order (dependents last).
+  PUBLISH_ORDER: >-
+    machi-types
+    machi-protocol
+    machi-obs
+    machi-tools
+    machi-llm
+    machi-agent
+    machi-workflow
+    machi-state
+    machi-compaction
+    machi-toolkit
+    machi-runtime
+    machi
 
 jobs:
   publish:
-    uses: qntx/workflows/.github/workflows/publish-crates.yml@main
-    with:
-      packages: >-
-        machi-types
-        machi-protocol
-        machi-obs
-        machi-tools
-        machi-llm
-        machi-agent
-        machi-workflow
-        machi-state
-        machi-compaction
-        machi-toolkit
-        machi-runtime
-        machi
-    secrets:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    name: Build, Test & Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --release --verbose --all-features
+
+      - name: Test
+        # Integration suites need optional features (required-features = full).
+        run: cargo test --workspace --verbose --all-features
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is not set"
+            exit 1
+          fi
+
+          version="$(cargo metadata --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
+          echo "Workspace version: $version"
+
+          # crates.io: max ~5 new crates / hour for new names; re-runs skip done.
+          sleep_secs=65
+
+          for pkg in $PUBLISH_ORDER; do
+            echo "::group::Publish $pkg@$version"
+            if cargo search "$pkg" --limit 1 2>/dev/null \
+              | grep -E "^$pkg = \"$version\"" >/dev/null 2>&1; then
+              echo "Already on crates.io: $pkg $version — skip"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # Retry a few times on 429 rate limits.
+            attempt=1
+            max_attempts=8
+            while true; do
+              if cargo publish -p "$pkg" --locked; then
+                echo "Published $pkg $version"
+                break
+              fi
+              status=$?
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "::error::Failed to publish $pkg after $max_attempts attempts"
+                exit "$status"
+              fi
+              echo "Publish failed (attempt $attempt); sleeping ${sleep_secs}s for rate limit…"
+              sleep "$sleep_secs"
+              attempt=$((attempt + 1))
+            done
+
+            echo "Cooldowning ${sleep_secs}s before next crate…"
+            sleep "$sleep_secs"
+            echo "::endgroup::"
+          done

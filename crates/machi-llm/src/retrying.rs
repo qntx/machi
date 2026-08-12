@@ -241,11 +241,12 @@ fn idle_timeout_stream(
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "unit tests")]
 mod tests {
+    use machi_types::Message;
+
     use super::*;
     use crate::mock::MockSampler;
     use crate::retry::RetryPolicy;
     use crate::sample::ToolChoice;
-    use machi_types::Message;
 
     fn req(text: &str) -> SampleRequest {
         SampleRequest {

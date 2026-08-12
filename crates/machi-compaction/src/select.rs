@@ -139,9 +139,10 @@ pub fn tool_pair_invariant_holds(messages: &[Message]) -> bool {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "unit tests")]
 mod tests {
-    use super::*;
     use machi_types::{ToolCall, ToolCallId};
     use serde_json::json;
+
+    use super::*;
 
     fn tool_call(name: &str) -> ToolCall {
         ToolCall {

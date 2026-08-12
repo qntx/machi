@@ -309,8 +309,9 @@ pub fn session_jsonl_dir(root: impl AsRef<Path>, session_id: &str) -> PathBuf {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "unit tests")]
 mod tests {
-    use super::*;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[tokio::test]
     async fn append_and_reload() {

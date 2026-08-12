@@ -300,8 +300,9 @@ pub fn http_status_error_with_meta(
     retry_after: Option<std::time::Duration>,
     x_should_retry: Option<bool>,
 ) -> MachiError {
-    use crate::retry::{HttpRetryClass, classify_http_status, error_code_for_http};
     use machi_types::RetryClass;
+
+    use crate::retry::{HttpRetryClass, classify_http_status, error_code_for_http};
 
     let snippet: String = body.chars().take(256).collect();
     let class = classify_http_status(status, x_should_retry);

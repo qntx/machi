@@ -12,11 +12,10 @@ mod seatbelt;
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-use tokio::process::Command;
-
 #[cfg(all(feature = "seatbelt", target_os = "macos"))]
 pub use seatbelt::{SANDBOX_EXEC, SeatbeltBackend, build_profile};
+use serde::{Deserialize, Serialize};
+use tokio::process::Command;
 
 /// Filesystem access granted to a sandboxed command.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -508,7 +508,7 @@ impl InProcessHost {
     /// Refund a slot reserved before the child turn actually starts.
     fn release_slot(&self) {
         self.spent
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |s| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |s| {
                 Some(s.saturating_sub(1))
             })
             .ok();

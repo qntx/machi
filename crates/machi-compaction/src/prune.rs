@@ -207,8 +207,9 @@ impl CompactionStrategy for SummarizingCompaction {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "unit tests")]
 mod tests {
-    use super::*;
     use std::sync::Arc;
+
+    use super::*;
 
     #[test]
     fn prune_shortens_tool_bodies() {

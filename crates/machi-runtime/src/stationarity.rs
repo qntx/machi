@@ -120,9 +120,10 @@ pub fn nudge_message(reminder: String) -> Message {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "unit tests")]
 mod tests {
-    use super::*;
     use machi_types::ToolCallId;
     use serde_json::json;
+
+    use super::*;
 
     fn call(name: &str, args: serde_json::Value) -> ToolCall {
         ToolCall {

@@ -5,11 +5,10 @@ use std::time::{Duration, Instant};
 
 use futures::future::join_all;
 use machi_obs::{NoopMetrics, SharedMetrics, record_tool_call};
+use machi_protocol::TurnEventKind;
 use machi_types::{ToolCall, ToolCallId};
 use tokio::time::timeout;
 use tracing::{Instrument, info_span};
-
-use machi_protocol::TurnEventKind;
 
 use crate::approval::{ApprovalDecision, ApprovalGate, AutoApprove};
 use crate::context::ToolCallContext;
@@ -470,11 +469,12 @@ fn finalize_outcomes(
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, reason = "unit tests")]
 mod tests {
-    use super::*;
-    use crate::tool::{DynTool, ToolResult};
     use async_trait::async_trait;
     use machi_types::{ToolCall, ToolCallId};
     use serde_json::json;
+
+    use super::*;
+    use crate::tool::{DynTool, ToolResult};
 
     struct CapTool {
         name: String,

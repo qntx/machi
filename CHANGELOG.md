@@ -79,6 +79,6 @@ See git history for W1–W6 work while the tree was mis-labeled `1.0.0`.
 
 Pre-stability line after correcting the premature `1.0.0` label.
 
-[Unreleased]: https://github.com/qntx/machi/compare/v0.9.1...HEAD
-[0.9.1]: https://github.com/qntx/machi/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/qntx/machi/releases/tag/v0.9.0
+[Unreleased]: https://github.com/qntx/ovo/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/qntx/ovo/releases/tag/v0.9.1
+[0.9.0]: https://github.com/qntx/ovo/releases/tag/v0.9.0

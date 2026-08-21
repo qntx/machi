@@ -18,7 +18,7 @@ pub enum BreakerOutcome {
     Failure,
 }
 
-/// Breaker state ovone.
+/// Breaker state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BreakerState {
     /// Accepting traffic.

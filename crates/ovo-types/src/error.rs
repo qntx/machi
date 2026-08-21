@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-/// Ovone-stable error code for control-plane handling.
+/// Machine-stable error code for control-plane handling.
 ///
 /// Codes use dotted `domain.reason` strings via [`ErrorCode::as_str`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

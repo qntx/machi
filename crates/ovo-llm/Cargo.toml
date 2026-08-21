@@ -1,0 +1,34 @@
+[package]
+name = "ovo-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "LLM sampler traits, mock, and HTTP providers for Ovo"
+keywords = ["ai", "llm", "agent"]
+categories = ["asynchronous", "api-bindings"]
+
+[features]
+default = []
+# OpenAI-compatible Chat Completions HTTP client (`/v1/chat/completions`).
+openai = ["dep:reqwest", "dep:tracing"]
+# Ollama native `/api/chat` HTTP client.
+ollama = ["dep:reqwest", "dep:tracing"]
+
+[dependencies]
+async-trait = { workspace = true }
+futures = { workspace = true }
+ovo-tools = { workspace = true }
+ovo-types = { workspace = true }
+reqwest = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "macros"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+
+[lints]
+workspace = true

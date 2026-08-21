@@ -1,0 +1,83 @@
+[package]
+name = "ovo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Enterprise embeddable agent runtime kernel"
+keywords = ["ai", "agent", "llm", "workflow", "runtime"]
+categories = ["api-bindings", "asynchronous"]
+
+[features]
+default = ["runtime", "workflow"]
+runtime = ["dep:ovo-runtime", "dep:ovo-agent", "dep:ovo-llm", "dep:ovo-tools"]
+workflow = ["dep:ovo-workflow"]
+toolkit = ["runtime", "dep:ovo-toolkit", "sandbox"]
+sandbox = ["dep:ovo-sandbox"]
+# macOS Seatbelt backend (process sandbox via sandbox-exec).
+seatbelt = ["sandbox", "ovo-sandbox/seatbelt", "ovo-toolkit?/seatbelt"]
+state = ["dep:ovo-state"]
+compaction = ["dep:ovo-compaction"]
+obs = ["dep:ovo-obs"]
+openai = ["runtime", "ovo-llm/openai"]
+ollama = ["runtime", "ovo-llm/ollama"]
+full = ["runtime", "workflow", "toolkit", "state", "compaction", "obs", "openai", "ollama", "sandbox"]
+
+[dependencies]
+ovo-types = { workspace = true }
+ovo-protocol = { workspace = true }
+ovo-tools = { workspace = true, optional = true }
+ovo-llm = { workspace = true, optional = true }
+ovo-agent = { workspace = true, optional = true }
+ovo-runtime = { workspace = true, optional = true }
+ovo-workflow = { workspace = true, optional = true }
+ovo-toolkit = { workspace = true, optional = true }
+ovo-sandbox = { workspace = true, optional = true }
+ovo-state = { workspace = true, optional = true }
+ovo-compaction = { workspace = true, optional = true }
+ovo-obs = { workspace = true, optional = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio-util = { workspace = true }
+
+[[example]]
+name = "live_events"
+required-features = ["runtime"]
+
+[[example]]
+name = "session_checkpoint"
+required-features = ["state"]
+
+[[example]]
+name = "session_resume"
+required-features = ["state"]
+
+[[example]]
+name = "repo_task"
+required-features = ["toolkit", "obs"]
+
+[[example]]
+name = "workflow_plan"
+required-features = ["workflow", "obs"]
+
+[[example]]
+name = "workflow_ollama"
+required-features = ["ollama", "workflow"]
+
+# Integration suites need optional features; skip under bare `cargo test`
+# (publish reusable workflow). CI uses --all-features and still runs them.
+[[test]]
+name = "stress"
+required-features = ["full"]
+
+[[test]]
+name = "dual_modes"
+required-features = ["full"]
+
+[lints]
+workspace = true

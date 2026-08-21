@@ -1,0 +1,25 @@
+[package]
+name = "ovo-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Process sandbox policy and backends for Ovo tools"
+keywords = ["ai", "agent", "sandbox", "security"]
+categories = ["os", "asynchronous"]
+
+[features]
+default = []
+# macOS Seatbelt via /usr/bin/sandbox-exec (no-op compile on other OSes).
+seatbelt = []
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -2,8 +2,9 @@
 
 ## Supported versions
 
-During dual-mode consolidation, only the `main` line (`1.0.0` workspace
-version) receives fixes. Older Machi ≤0.8 is unsupported.
+Only the `main` line (`0.9.1` workspace version) receives fixes.
+Older Machi ≤0.8 is unsupported.
+Historical crates.io `machi*` 1.0.0 and the `ovo` 0.9.0 stub are unsupported.
 
 ## Reporting
 
@@ -31,4 +32,4 @@ cargo deny check
 - Default isolation is **in-process** (`InProcessIsolation`). Product sandboxes
   inject a custom `IsolationBackend`.
 - Budget, depth, concurrency, and journal divergence are **fail-closed**.
-- Workflow engine never loads LLM HTTP clients (`machi-workflow` firewall).
+- Workflow engine never loads LLM HTTP clients (`ovo-workflow` firewall).

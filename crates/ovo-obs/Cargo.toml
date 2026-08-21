@@ -1,0 +1,15 @@
+[package]
+name = "ovo-obs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Observability contracts: metrics, span catalogue, and log redaction for Ovo"
+keywords = ["ai", "agent", "metrics", "observability"]
+categories = ["asynchronous", "development-tools"]
+
+[dependencies]
+ovo-protocol = { workspace = true }
+
+[lints]
+workspace = true

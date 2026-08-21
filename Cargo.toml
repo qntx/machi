@@ -1,11 +1,11 @@
 [workspace]
 members = ["crates/*"]
-default-members = ["crates/machi"]
+default-members = ["crates/ovo"]
 exclude = ["3rdparty"]
 resolver = "3"
 
 [workspace.package]
-version = "0.9.0"
+version = "0.9.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/machi"
@@ -14,19 +14,19 @@ keywords = ["ai", "agent", "llm", "workflow", "runtime"]
 categories = ["api-bindings", "asynchronous"]
 
 [workspace.dependencies]
-machi = { version = "0.9.0", path = "crates/machi" }
-machi-types = { version = "0.9.0", path = "crates/machi-types" }
-machi-protocol = { version = "0.9.0", path = "crates/machi-protocol" }
-machi-tools = { version = "0.9.0", path = "crates/machi-tools" }
-machi-llm = { version = "0.9.0", path = "crates/machi-llm" }
-machi-agent = { version = "0.9.0", path = "crates/machi-agent" }
-machi-runtime = { version = "0.9.0", path = "crates/machi-runtime" }
-machi-workflow = { version = "0.9.0", path = "crates/machi-workflow" }
-machi-toolkit = { version = "0.9.0", path = "crates/machi-toolkit" }
-machi-state = { version = "0.9.0", path = "crates/machi-state" }
-machi-compaction = { version = "0.9.0", path = "crates/machi-compaction" }
-machi-obs = { version = "0.9.0", path = "crates/machi-obs" }
-machi-sandbox = { version = "0.9.0", path = "crates/machi-sandbox" }
+ovo = { version = "0.9.1", path = "crates/ovo" }
+ovo-types = { version = "0.9.1", path = "crates/ovo-types" }
+ovo-protocol = { version = "0.9.1", path = "crates/ovo-protocol" }
+ovo-tools = { version = "0.9.1", path = "crates/ovo-tools" }
+ovo-llm = { version = "0.9.1", path = "crates/ovo-llm" }
+ovo-agent = { version = "0.9.1", path = "crates/ovo-agent" }
+ovo-runtime = { version = "0.9.1", path = "crates/ovo-runtime" }
+ovo-workflow = { version = "0.9.1", path = "crates/ovo-workflow" }
+ovo-toolkit = { version = "0.9.1", path = "crates/ovo-toolkit" }
+ovo-state = { version = "0.9.1", path = "crates/ovo-state" }
+ovo-compaction = { version = "0.9.1", path = "crates/ovo-compaction" }
+ovo-obs = { version = "0.9.1", path = "crates/ovo-obs" }
+ovo-sandbox = { version = "0.9.1", path = "crates/ovo-sandbox" }
 
 async-trait = "0.1.92"
 futures = "0.3.34"

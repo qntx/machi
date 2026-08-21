@@ -1,0 +1,18 @@
+[package]
+name = "ovo-compaction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Conversation compaction strategies for the Ovo kernel"
+keywords = ["ai", "agent", "compaction"]
+categories = ["algorithms"]
+
+[dependencies]
+ovo-types = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -917,182 +917,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "machi"
-version = "0.9.0"
-dependencies = [
- "async-trait",
- "machi-agent",
- "machi-compaction",
- "machi-llm",
- "machi-obs",
- "machi-protocol",
- "machi-runtime",
- "machi-sandbox",
- "machi-state",
- "machi-toolkit",
- "machi-tools",
- "machi-types",
- "machi-workflow",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "machi-agent"
-version = "0.9.0"
-dependencies = [
- "machi-tools",
- "machi-types",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "machi-compaction"
-version = "0.9.0"
-dependencies = [
- "machi-types",
- "serde_json",
-]
-
-[[package]]
-name = "machi-llm"
-version = "0.9.0"
-dependencies = [
- "async-trait",
- "futures",
- "machi-tools",
- "machi-types",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "machi-obs"
-version = "0.9.0"
-dependencies = [
- "machi-protocol",
-]
-
-[[package]]
-name = "machi-protocol"
-version = "0.9.0"
-dependencies = [
- "machi-types",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "machi-runtime"
-version = "0.9.0"
-dependencies = [
- "async-trait",
- "futures",
- "jsonschema",
- "machi-agent",
- "machi-compaction",
- "machi-llm",
- "machi-obs",
- "machi-protocol",
- "machi-state",
- "machi-toolkit",
- "machi-tools",
- "machi-types",
- "machi-workflow",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "machi-sandbox"
-version = "0.9.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "machi-state"
-version = "0.9.0"
-dependencies = [
- "async-trait",
- "machi-types",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "machi-toolkit"
-version = "0.9.0"
-dependencies = [
- "async-trait",
- "machi-sandbox",
- "machi-tools",
- "machi-types",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "machi-tools"
-version = "0.9.0"
-dependencies = [
- "async-trait",
- "futures",
- "machi-obs",
- "machi-protocol",
- "machi-types",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "machi-types"
-version = "0.9.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
- "uuid",
-]
-
-[[package]]
-name = "machi-workflow"
-version = "0.9.0"
-dependencies = [
- "libc",
- "rhai",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1222,6 +1046,182 @@ name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
+
+[[package]]
+name = "ovo"
+version = "0.9.1"
+dependencies = [
+ "async-trait",
+ "ovo-agent",
+ "ovo-compaction",
+ "ovo-llm",
+ "ovo-obs",
+ "ovo-protocol",
+ "ovo-runtime",
+ "ovo-sandbox",
+ "ovo-state",
+ "ovo-toolkit",
+ "ovo-tools",
+ "ovo-types",
+ "ovo-workflow",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "ovo-agent"
+version = "0.9.1"
+dependencies = [
+ "ovo-tools",
+ "ovo-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "ovo-compaction"
+version = "0.9.1"
+dependencies = [
+ "ovo-types",
+ "serde_json",
+]
+
+[[package]]
+name = "ovo-llm"
+version = "0.9.1"
+dependencies = [
+ "async-trait",
+ "futures",
+ "ovo-tools",
+ "ovo-types",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "ovo-obs"
+version = "0.9.1"
+dependencies = [
+ "ovo-protocol",
+]
+
+[[package]]
+name = "ovo-protocol"
+version = "0.9.1"
+dependencies = [
+ "ovo-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ovo-runtime"
+version = "0.9.1"
+dependencies = [
+ "async-trait",
+ "futures",
+ "jsonschema",
+ "ovo-agent",
+ "ovo-compaction",
+ "ovo-llm",
+ "ovo-obs",
+ "ovo-protocol",
+ "ovo-state",
+ "ovo-toolkit",
+ "ovo-tools",
+ "ovo-types",
+ "ovo-workflow",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "ovo-sandbox"
+version = "0.9.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "ovo-state"
+version = "0.9.1"
+dependencies = [
+ "async-trait",
+ "ovo-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "ovo-toolkit"
+version = "0.9.1"
+dependencies = [
+ "async-trait",
+ "ovo-sandbox",
+ "ovo-tools",
+ "ovo-types",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "ovo-tools"
+version = "0.9.1"
+dependencies = [
+ "async-trait",
+ "futures",
+ "ovo-obs",
+ "ovo-protocol",
+ "ovo-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "ovo-types"
+version = "0.9.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "ovo-workflow"
+version = "0.9.1"
+dependencies = [
+ "libc",
+ "rhai",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
 
 [[package]]
 name = "parking_lot"

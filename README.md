@@ -1,11 +1,13 @@
 <!-- markdownlint-disable MD033 MD041 MD036 -->
 
-# Machi
+# Ovo
 
-[![Crates.io](https://img.shields.io/crates/v/machi.svg)](https://crates.io/crates/machi)
+[![Crates.io](https://img.shields.io/crates/v/ovo.svg)](https://crates.io/crates/ovo)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
 
 **Embeddable multi-agent runtime kernel** for Rust (dual-mode: dynamic spawn + journaled Rhai workflow).
+
+Formerly published as [`machi`](https://crates.io/crates/machi).
 
 ## License
 

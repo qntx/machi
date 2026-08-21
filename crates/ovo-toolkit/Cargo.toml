@@ -1,0 +1,30 @@
+[package]
+name = "ovo-toolkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reference filesystem and shell tools for the Ovo kernel"
+keywords = ["ai", "agent", "tools", "filesystem"]
+categories = ["filesystem", "asynchronous"]
+
+[features]
+default = []
+# macOS Seatbelt process sandbox (passthrough compile on other OSes).
+seatbelt = ["ovo-sandbox/seatbelt"]
+
+[dependencies]
+async-trait = { workspace = true }
+ovo-sandbox = { workspace = true }
+ovo-tools = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "sync", "macros", "rt", "time", "process"] }
+
+[dev-dependencies]
+ovo-types = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

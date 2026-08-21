@@ -8,18 +8,20 @@ jobs:
   publish:
     uses: qntx/workflows/.github/workflows/publish-crates.yml@main
     with:
+      timeout-minutes: 60
       packages: >-
-        machi-types
-        machi-protocol
-        machi-obs
-        machi-tools
-        machi-llm
-        machi-agent
-        machi-workflow
-        machi-state
-        machi-compaction
-        machi-toolkit
-        machi-runtime
-        machi
+        ovo-types
+        ovo-protocol
+        ovo-obs
+        ovo-tools
+        ovo-llm
+        ovo-agent
+        ovo-workflow
+        ovo-state
+        ovo-compaction
+        ovo-sandbox
+        ovo-toolkit
+        ovo-runtime
+        ovo
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

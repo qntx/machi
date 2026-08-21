@@ -1,0 +1,19 @@
+[package]
+name = "ovo-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wire-agnostic protocol types for the Ovo agent runtime kernel"
+keywords = ["ai", "agent", "protocol"]
+categories = ["data-structures"]
+
+[dependencies]
+ovo-types = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
